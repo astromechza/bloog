@@ -27,7 +27,10 @@ jobs:
       # but there may be other side effects we want to avoid.
       - run: git diff --exit-code
       # To improve our changes of success, do a dry-run publish of the crate.
-      - run: cargo publish --dry-run
+      - env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        if: env.CARGO_REGISTRY_TOKEN
+        run: cargo publish --dry-run
   release:
     runs-on: ubuntu-latest
     # Only run the release job on main refs.
@@ -54,4 +57,5 @@ jobs:
       # Publish the crate to match the new release.
       - env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        if: env.CARGO_REGISTRY_TOKEN
         run: cargo publish

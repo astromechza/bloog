@@ -1,40 +1,34 @@
 mod pathutils;
 
-use std::collections::HashSet;
-use std::fmt::{Debug, Formatter};
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{Html, IntoResponse, Response};
-use axum::routing::{get, post, head};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, head, post};
 use axum::{Form, Router};
+use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::prelude::*;
 use chrono::prelude::*;
-use validator::{Validate, ValidationError, ValidationErrors};
 use chrono::NaiveDate;
 use clap::{arg, ArgMatches, Command};
-use futures::{stream, StreamExt, TryStreamExt};
-use image::codecs::jpeg::JpegEncoder;
+use futures::stream::FuturesUnordered;
+use futures::{StreamExt, TryStreamExt};
 use image::codecs::webp::WebPEncoder;
 use image::ImageReader;
 use itertools::Itertools;
-use maud::{html, Markup, PreEscaped, Render};
+use maud::{html};
 use object_store::local::LocalFileSystem;
 use object_store::{parse_url_opts, ObjectStore, PutOptions, PutPayload};
-use std::io::Cursor;
-use std::sync::{Arc, RwLock};
-use base64::engine::general_purpose::STANDARD_NO_PAD;
-use object_store::path::PathPart;
-use tokio::sync::Mutex;
-use tower_http::trace;
-use tracing::{debug_span, error, info, info_span, instrument, Instrument, Level};
-use tower_http::trace::{TraceLayer};
-use tracing_subscriber::filter::FilterExt;
-use tracing_subscriber::fmt::format::FmtSpan;
-use url::Url;
-use base64::prelude::*;
-use futures::future::Lazy;
-use futures::stream::FuturesUnordered;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Debug};
+use std::io::Cursor;
+use std::sync::{Arc};
+use tower_http::trace;
+use tower_http::trace::TraceLayer;
+use tracing::{error, info, info_span, instrument, Instrument, Level};
+use tracing_subscriber::fmt::format::FmtSpan;
+use url::Url;
+use validator::{Validate};
 
 const EDITOR_COMMAND: &str = "editor";
 const VIEWER_COMMAND: &str = "viewer";
@@ -284,7 +278,7 @@ struct Post {
 async fn editor_posts_browse(State(state): State<Arc<SharedState>>) -> Response {
     let objects_paths = state.object_store
         .list(Some(&state.object_store_path.child("posts")))
-        .map_ok(|i| object_store::path::Path::from() i.location.as_ref())
+        .map_ok(|i| object_store::path::Path::from(i.location.as_ref()))
         .boxed()
         .try_collect::<Vec<object_store::path::Path>>()
         .instrument(info_span!("object_store_list"))
@@ -488,9 +482,8 @@ fn cli() -> Command {
 
 #[cfg(test)]
 mod tests {
+    use crate::{PostContentType, PostMetadata};
     use chrono::NaiveDate;
-    use serde::{Deserialize, Serialize};
-    use crate::{NewPostForm, PostLabel, PostContentType, PostMetadata};
 
     #[test]
     fn test_ser_der() {
