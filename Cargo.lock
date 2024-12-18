@@ -230,6 +230,7 @@ dependencies = [
  "anyhow",
  "axum",
  "base64",
+ "bytes",
  "chrono",
  "clap",
  "futures",
