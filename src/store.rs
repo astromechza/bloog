@@ -154,7 +154,7 @@ impl Store {
     }
 
     async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<(), Error> {
-        let matched_paths = self.os.list(Some(&prefix))
+        let matched_paths = self.os.list(Some(prefix))
             .map_ok(|m| m.location)
             .boxed();
         if self.os.delete_stream(matched_paths).try_collect::<Vec<Path>>().await?.is_empty() {
