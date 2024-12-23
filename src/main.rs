@@ -11,20 +11,26 @@ use axum::{Form, Router};
 use chrono::NaiveDate;
 use clap::{arg, ArgMatches, Command};
 use itertools::Itertools;
-use maud::html;
+use maud::{html, Markup};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
 use tower_http::trace;
 use tower_http::trace::TraceLayer;
-use tracing::{instrument, Level};
+use tracing::{error, instrument, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
 use url::Url;
 use validator::Validate;
+use lazy_static::lazy_static;
 
 const EDITOR_COMMAND: &str = "editor";
 const VIEWER_COMMAND: &str = "viewer";
+
+lazy_static! {
+    static ref RE_ALLOWED_SLUG: Regex = Regex::new(r"^[a-z0-9]+(-[a-z0-9]+)*$").unwrap();
+    static ref RE_COMMA_SEP_LABELS: Regex = Regex::new(r"^([a-z0-9]+(-[a-z0-9]+)*(,[a-z0-9]+(-[a-z0-9]+)*)*)?$").unwrap();
+}
 
 #[tokio::main]
 async fn main() {
@@ -35,6 +41,12 @@ async fn main() {
         Some((EDITOR_COMMAND, matches)) => editor(matches).await,
         Some((VIEWER_COMMAND, matches)) => viewer(matches).await,
         _ => {}
+    }
+}
+
+fn build_common_head() -> Markup {
+    html! {
+        script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" {};
     }
 }
 
@@ -98,9 +110,8 @@ async fn editor_image_browse(State(state): State<Arc<SharedState>>) -> Response 
     let image_ids = state.store.list_images().await.unwrap();
     (html! {
         head {
-            script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" {};
+            (build_common_head())
         }
-
         main {
             header {
                 h1 { "Images" }
@@ -118,8 +129,8 @@ async fn editor_image_browse(State(state): State<Arc<SharedState>>) -> Response 
             section {
                 h2 { "Thumbnails" }
                 @for id in image_ids {
-                    a href={ "/images/" (id) "medium.webp" } {
-                        img src={ "/images/" (id) ".thumb.webp" };
+                    a href={ "/images/" (id) ".medium.webp" } {
+                        img src={ "/images/" (id) ".thumbnail.webp" };
                         figcaption { (id) }
                     }
                 }
@@ -130,12 +141,14 @@ async fn editor_image_browse(State(state): State<Arc<SharedState>>) -> Response 
 
 fn id_and_variant_from_path(path: impl AsRef<str>) -> Result<(String, ImageVariant), Error> {
     let parts = path.as_ref().rsplitn(3, ".").collect_vec();
-    if parts.len() == 2 && parts[1] == "webp" {
-        Ok((parts[0].to_string(), ImageVariant::Original))
-    } else if parts.len() == 3 && parts[2] == "webp" {
-        Ok((parts[0].to_string(), ImageVariant::try_from(parts[1])?))
+    if parts[0] != "webp" {
+        Err(anyhow!("invalid extension '.{}'", parts[0]))
+    } else if parts.len() == 2 {
+        Ok((parts[1].to_string(), ImageVariant::Original))
+    } else if parts.len() == 3 {
+        Ok((parts[2].to_string(), ImageVariant::try_from(parts[1])?))
     } else {
-        Err(anyhow!(""))
+        Err(anyhow!("invalid path"))
     }
 }
 
@@ -143,7 +156,8 @@ fn id_and_variant_from_path(path: impl AsRef<str>) -> Result<(String, ImageVaria
 async fn editor_image_get(State(state): State<Arc<SharedState>>, Path(variant): Path<String>) -> Response {
     let (id, variant) = match id_and_variant_from_path(&variant) {
         Ok(x) => x,
-        Err(_) => {
+        Err(e) => {
+            error!("failed to get variant from path: {}", e);
             return StatusCode::NOT_FOUND.into_response();
         }
     };
@@ -163,7 +177,7 @@ async fn editor_posts_browse(State(state): State<Arc<SharedState>>) -> Response 
     let posts = state.store.list_posts().await.unwrap();
     (html! {
         head {
-            script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" {};
+            (build_common_head())
         }
         main {
             header {
@@ -184,13 +198,6 @@ async fn editor_posts_browse(State(state): State<Arc<SharedState>>) -> Response 
             }
         }
     }).into_response()
-}
-
-use lazy_static::lazy_static;
-
-lazy_static! {
-    static ref RE_ALLOWED_SLUG: Regex = Regex::new(r"^[a-z0-9]+(-[a-z0-9]+)*$").unwrap();
-    static ref RE_COMMA_SEP_LABELS: Regex = Regex::new(r"^([a-z0-9]+(-[a-z0-9]+)*(,[a-z0-9]+(-[a-z0-9]+)*)*)?$").unwrap();
 }
 
 #[derive(Debug,Serialize,Deserialize,Clone,Validate)]
@@ -226,7 +233,7 @@ async fn editor_posts_get(State(state): State<Arc<SharedState>>, Path(id): Path<
         Some((post, content)) => {
             (html!(
                 head {
-                    script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous" {};
+                    (build_common_head())
                 }
                 main {
                     header {
