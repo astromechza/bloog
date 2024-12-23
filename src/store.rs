@@ -253,7 +253,14 @@ impl Store {
 
     pub async fn get_post_raw(&self, slug: &str) -> Result<Option<(Post, String)>, Error> {
         let post_path = self.sub_path.child("posts").child(slug);
-        let content = String::from_utf8_lossy(self.os.get(&post_path.child("content")).await?.bytes().await?.as_ref()).to_string();
+        let content_bytes = match self.os.get(&post_path.child("content")).await {
+            Ok(gr) => gr.bytes().await?,
+            Err(object_store::Error::NotFound{..}) => {
+                return Ok(None);
+            },
+            Err(e) => return Err(e.into()),
+        };
+        let content = String::from_utf8_lossy(content_bytes.as_ref()).to_string();
         let post_paths: Vec<Path> = self.os
             .list(Some(&post_path))
             .map_ok(|i| path_tail(&i.location, &self.sub_path))
