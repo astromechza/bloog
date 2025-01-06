@@ -1,6 +1,6 @@
-# nu blog
+# bloog (new blog)
 
-Plan
+The idea is a stateless blog binary that pulls all content from an object storage bucket. 
 
 ## bloog-editor
 

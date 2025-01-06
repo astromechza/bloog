@@ -1,6 +1,6 @@
 use std::fmt::Display;
 use crate::path_utils::path_tail;
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
 use bytes::Bytes;
@@ -116,14 +116,14 @@ impl Store {
         }
     }
 
-    pub async fn upsert_post(&self, post: &Post, raw: &[u8]) -> Result<(), Error> {
+    pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<(), Error> {
         let post_path = self.sub_path.child("posts").child(post.slug.clone());
 
         let post_meta = PostMetadata::V1((post.date, post.title.clone(), post.content_type.clone()));
         let post_meta_bytes = postcard::to_allocvec(&post_meta)?;
         let post_meta_raw = BASE64_STANDARD_NO_PAD.encode(&post_meta_bytes);
 
-        self.os.put_opts(&post_path.child("content"), PutPayload::from(raw.to_vec()), PutOptions::default()).await?;
+        self.os.put_opts(&post_path.child("content"), PutPayload::from(content.to_string()), PutOptions::default()).await?;
         self.os.put_opts(&post_path.child("props").child(post_meta_raw.clone()), PutPayload::default(), PutOptions::default()).await?;
         // write the tags concurrently
         FuturesUnordered::from_iter(post.labels.iter().map(| lbl| {
@@ -146,11 +146,8 @@ impl Store {
                 ready(false)
             })
             .boxed();
-        if self.os.delete_stream(cleanup_paths).try_collect::<Vec<Path>>().await?.is_empty() {
-            Err(Error::msg("cleanup failed"))
-        } else {
-            Ok(())
-        }
+        self.os.delete_stream(cleanup_paths).try_collect::<Vec<Path>>().await?;
+        Ok(())
     }
 
     async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<(), Error> {
@@ -172,8 +169,7 @@ impl Store {
         let slug = format!("{}-{}", Local::now().format("%Y%m%dT%H%M%S"), pre_slug);
         let image_path = self.sub_path.child("images").child(slug.clone());
         let image_reader = ImageReader::new(Cursor::new(raw))
-            .with_guessed_format()
-            .expect("reader should not fail on buffered data");
+            .with_guessed_format().context("failed to guess format")?;
         let image = image_reader.decode()?;
         let medium = if image.width() > Self::MEDIUM_VARIANT_WIDTH || image.height() > Self::MEDIUM_VARIANT_HEIGHT {
             image.resize(Self::MEDIUM_VARIANT_WIDTH, Self::MEDIUM_VARIANT_HEIGHT, image::imageops::FilterType::Lanczos3)
@@ -183,15 +179,15 @@ impl Store {
         let thumbnail = image.thumbnail(Self::THUMB_VARIANT_WIDTH, Self::THUMB_VARIANT_HEIGHT);
 
         let mut original_data = vec![];
-        image.write_with_encoder(WebPEncoder::new_lossless(&mut original_data)).expect("image translation should never fail");
+        image.write_with_encoder(WebPEncoder::new_lossless(&mut original_data))?;
         self.os.put(&image_path.child("original.webp"), PutPayload::from(original_data)).await?;
 
         let mut medium_data = vec![];
-        medium.write_with_encoder(WebPEncoder::new_lossless(&mut medium_data)).expect("image translation should never fail");
+        medium.write_with_encoder(WebPEncoder::new_lossless(&mut medium_data))?;
         self.os.put(&image_path.child("medium.webp"), PutPayload::from(medium_data)).await?;
 
         let mut thumbnail_data = vec![];
-        thumbnail.write_with_encoder(WebPEncoder::new_lossless(&mut thumbnail_data)).expect("image translation should never fail");
+        thumbnail.write_with_encoder(WebPEncoder::new_lossless(&mut thumbnail_data))?;
         self.os.put(&image_path.child("thumbnail.webp"), PutPayload::from(thumbnail_data)).await?;
 
         Ok(slug)
@@ -204,7 +200,7 @@ impl Store {
     fn labels_from_paths(i: Iter<&Path>, offset: usize) -> Vec<String> {
         i.into_iter().filter_map(|p| {
             let mut iter = p.parts();
-            if iter.nth(offset + 2).map(|pp| pp.as_ref() == "labels").is_some() {
+            if iter.nth(offset + 2).filter(|pp| pp.as_ref() == "labels").is_some() {
                 iter.next().map(|pp| pp.as_ref().to_string())
             } else {
                 None
@@ -229,10 +225,11 @@ impl Store {
 
         // each path looks like images/... since we've removed the prefix path already
         Ok(objects_paths.iter()
-            .into_group_map_by(|f| f.parts().nth(1)).iter()
-            .filter(|(slug, _)| slug.is_some())
+            .into_group_map_by(|f| f.parts().nth(1))
+            .iter()
+            .flat_map(|(slug, paths)| slug.as_ref().map(|p| (p.as_ref(), paths))  )
             .map(|(slug, paths)| {
-                let slug = slug.as_ref().unwrap().as_ref().to_string();
+                let slug = slug.to_string();
                 let labels = Self::labels_from_paths(paths.iter(), 0);
                 match Self::props_part_from_paths(paths.iter(), 0) {
                     Some(PostMetadata::V1((date, title, content_type))) => Post {
@@ -290,7 +287,8 @@ impl Store {
         Ok(self.os.list_with_delimiter(Some(&self.sub_path.child("images")))
             .await?
             .common_prefixes.iter()
-            .map(|m| path_tail(&Path::from(m.filename().unwrap()), &self.sub_path).to_string())
+            .flat_map(|m| m.filename().map(Path::from))
+            .map(|m| path_tail(&m, &self.sub_path).to_string())
             .collect_vec())
     }
 
@@ -305,6 +303,14 @@ impl Store {
             Err(object_store::Error::NotFound{..}) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    #[warn(dead_code)]
+    pub(crate) async fn debug_list_paths(&self) -> Result<Vec<String>, Error> {
+        Ok(self.os.list(None)
+            .boxed()
+            .map_ok(|m| m.location.to_string())
+            .try_collect::<Vec<String>>().await?)
     }
 }
 
@@ -330,8 +336,11 @@ impl TryFrom<PathPart<'_>> for PostMetadata {
 
 impl From<PostMetadata> for PathPart<'_> {
     fn from(meta: PostMetadata) -> Self {
-        let raw = postcard::to_allocvec(&meta).expect("Failed to serialize PostMetadata");
-        PathPart::from(BASE64_STANDARD_NO_PAD.encode(&raw))
+        if let Ok(raw) = postcard::to_allocvec(&meta) {
+            PathPart::from(BASE64_STANDARD_NO_PAD.encode(&raw))
+        } else {
+            PathPart::default()            
+        }
     }
 }
 
@@ -343,9 +352,9 @@ mod tests {
     use std::ops::Deref;
 
     #[test]
-    fn test_ser_der() {
-        let p = PostMetadata::V1((NaiveDate::from_ymd_opt(2024, 1, 2).unwrap(), "fizz".to_string(), PostContentType::Markdown));
-        let b = postcard::to_allocvec(&p).unwrap();
+    fn test_ser_der() -> Result<(), Error> {
+        let p = PostMetadata::V1((NaiveDate::from_ymd_opt(2024, 1, 2).unwrap_or_default(), "fizz".to_string(), PostContentType::Markdown));
+        let b = postcard::to_allocvec(&p)?;
         assert_eq!(b.len(), 18);
         assert_eq!(b, vec![
             // enum 0
@@ -358,26 +367,29 @@ mod tests {
             // enum 0
             0,
         ]);
-        let p2 = postcard::from_bytes(b.as_slice()).unwrap();
+        let p2 = postcard::from_bytes(b.as_slice())?;
         assert_eq!(p, p2);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_store_images_empty() {
+    async fn test_store_images_empty() -> Result<(), Error> {
         let store = Store::default();
-        assert!(store.list_images().await.unwrap().is_empty());
-        assert_eq!(store.get_image_raw("fizz", ImageVariant::Medium).await.unwrap(), None);
+        assert!(store.list_images().await?.is_empty());
+        assert_eq!(store.get_image_raw("fizz", ImageVariant::Medium).await?, None);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_store_posts_empty() {
+    async fn test_store_posts_empty() -> Result<(), Error> {
         let store = Store::default();
-        assert!(store.list_posts().await.unwrap().is_empty());
-        assert_eq!(store.get_post_raw("fizz").await.unwrap(), None);
+        assert!(store.list_posts().await?.is_empty());
+        assert_eq!(store.get_post_raw("fizz").await?, None);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_store_images() {
+    async fn test_store_images() -> Result<(), Error> {
         let store = Store {
             sub_path: Path::from("default"),
             ..Store::default()
@@ -385,19 +397,46 @@ mod tests {
 
         let eg_image = DynamicImage::new(100, 100, ColorType::Rgb8);
         let mut eg_data: Vec<u8> = vec![];
-        eg_image.write_with_encoder(JpegEncoder::new(&mut eg_data)).unwrap();
+        eg_image.write_with_encoder(JpegEncoder::new(&mut eg_data))?;
 
-        let slug = store.create_image("test", eg_data.deref()).await.unwrap();
-        assert_eq!(store.list_images().await.unwrap(), vec![slug.clone()]);
-        assert_ne!(store.get_image_raw(&slug, ImageVariant::Thumbnail).await.unwrap(), None);
-        assert_ne!(store.get_image_raw(&slug, ImageVariant::Medium).await.unwrap(), None);
-        assert_ne!(store.get_image_raw(&slug, ImageVariant::Original).await.unwrap(), None);
+        let slug = store.create_image("test", eg_data.deref()).await?;
+        assert_eq!(store.list_images().await?, vec![slug.clone()]);
+        assert_ne!(store.get_image_raw(&slug, ImageVariant::Thumbnail).await?, None);
+        assert_ne!(store.get_image_raw(&slug, ImageVariant::Medium).await?, None);
+        assert_ne!(store.get_image_raw(&slug, ImageVariant::Original).await?, None);
 
-        store.delete_image(&slug).await.unwrap();
-        assert_eq!(store.list_images().await.unwrap(), Vec::<String>::new());
-        assert_eq!(store.get_image_raw(&slug, ImageVariant::Thumbnail).await.unwrap(), None);
-        assert_eq!(store.get_image_raw(&slug, ImageVariant::Medium).await.unwrap(), None);
-        assert_eq!(store.get_image_raw(&slug, ImageVariant::Original).await.unwrap(), None);
+        store.delete_image(&slug).await?;
+        assert_eq!(store.list_images().await?, Vec::<String>::new());
+        assert_eq!(store.get_image_raw(&slug, ImageVariant::Thumbnail).await?, None);
+        assert_eq!(store.get_image_raw(&slug, ImageVariant::Medium).await?, None);
+        assert_eq!(store.get_image_raw(&slug, ImageVariant::Original).await?, None);
+        Ok(())
     }
 
+    #[tokio::test]
+    async fn test_store_posts() -> Result<(), Error> {
+        let store = Store {
+            sub_path: Path::from("default"),
+            ..Store::default()
+        };
+        store.upsert_post(&Post{
+            date: NaiveDate::from_ymd(2020, 1, 1),
+            slug: "my-first-post".to_string(),
+            title: "My first post".to_string(),
+            content_type: PostContentType::Markdown,
+            labels: vec!["blue".to_string(), "green".to_string()],
+        }, "my-content").await?;
+
+        println!("{:#?}", store.debug_list_paths().await?);
+
+        let (post, content) = store.get_post_raw("my-first-post").await?.unwrap_or_default();
+        assert_eq!(post.date, NaiveDate::from_ymd(2020, 1, 1));
+        assert_eq!(post.slug, "my-first-post");
+        assert_eq!(post.title, "My first post");
+        assert_eq!(post.content_type, PostContentType::Markdown);
+        assert_eq!(post.labels, vec!["blue".to_string(), "green".to_string()]);
+        assert_eq!(content, "my-content".to_string());
+
+        Ok(())
+    }
 }
