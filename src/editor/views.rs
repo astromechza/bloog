@@ -115,13 +115,14 @@ pub(crate) fn list_posts_page(posts: Vec<Post>, htmx_context: Option<HtmxContext
                     th { "Date" }
                     th { "Slug" }
                     th { "Title" }
+                    th { "Published" }
                     th { "Labels" }
                 }
             }
             tbody {
                 @if posts.is_empty() {
                     tr {
-                        td colspan="4" { "No posts, please create one" }
+                        td colspan="5" { "No posts, please create one" }
                     }
                 } else {
                     @for post in posts {
@@ -133,6 +134,7 @@ pub(crate) fn list_posts_page(posts: Vec<Post>, htmx_context: Option<HtmxContext
                             }
                             td { (post.slug) }
                             td { (post.title) }
+                            td { (post.published) }
                             td { (post.labels.join(", ")) }
                         }
                     }
@@ -157,6 +159,10 @@ fn render_post_form(current: Option<(Post, String)>, is_new: bool) -> Markup {
                 label for="title" { "Post Title" }
                 input type="text" name="title" spellcheck="true" required="true" placeholder="The title of this post" value=[current.as_ref().map(|x| &x.0.title)];
             }
+            div.column {
+                label for="published" { "Published" }
+                input type="checkbox" name="published" value="true" checked[current.as_ref().map(|x| x.0.published).unwrap_or_default()];
+            }
         }
         div.row {
             div.column {
@@ -169,6 +175,10 @@ fn render_post_form(current: Option<(Post, String)>, is_new: bool) -> Markup {
                     option value=(Markdown) selected[current.as_ref().map(|x| x.0.content_type == Markdown).unwrap_or_default()] { (Markdown) }
                     option value=(RestructuredText) selected[current.as_ref().map(|x| x.0.content_type == RestructuredText).unwrap_or_default()] { (RestructuredText)}
                 }
+            }
+            div.column {
+                label for="labels" { "Labels" }
+                input type="text" name="labels" placeholder="label,label,label" value=[current.as_ref().map(|x| x.0.labels.join(","))];
             }
         }
         div.row {
