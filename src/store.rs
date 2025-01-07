@@ -17,7 +17,6 @@ use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::slice::Iter;
-use tracing::info;
 use url::Url;
 
 #[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord,Default)]
