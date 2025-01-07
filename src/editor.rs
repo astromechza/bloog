@@ -111,6 +111,9 @@ async fn submit_new_post_handler(State(store): State<Arc<Store>>, headers: Heade
         content_type: form.content_type,
         labels: vec![],
     };
+    if store.get_post_raw(form.slug.as_str()).await.map_resp_err(&htmx_context)?.is_some() {
+        return Ok(views::new_posts_page(Some((temporary_post, form.raw_content)), Some("slug already exists".to_string()), htmx_context));
+    }
     if let Err(e) = store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
         return Ok(views::new_posts_page(Some((temporary_post, form.raw_content)), Some(e.to_string()), htmx_context));
     }
