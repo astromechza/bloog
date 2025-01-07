@@ -2,7 +2,6 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use maud::{html, Markup, DOCTYPE};
 use object_store::ObjectMeta;
-use crate::editor::views;
 use crate::htmx::HtmxContext;
 use crate::store::Post;
 use crate::store::PostContentType::{Markdown, RestructuredText};

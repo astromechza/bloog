@@ -104,6 +104,7 @@ impl Store {
         Self { os, sub_path }
     }
 
+    #[allow(dead_code)]
     pub fn from_url(url: &Url) -> Result<Self, Error> {
         if url.scheme() != "file" {
             let opts = url.query_pairs()
@@ -358,7 +359,7 @@ mod tests {
     fn test_ser_der() -> Result<(), Error> {
         let p = PostMetadata::V1((NaiveDate::from_ymd_opt(2024, 1, 2).unwrap_or_default(), "fizz".to_string(), PostContentType::Markdown, false));
         let b = postcard::to_allocvec(&p)?;
-        assert_eq!(b.len(), 18);
+        assert_eq!(b.len(), 19);
         assert_eq!(b, vec![
             // enum 0
             0,
@@ -368,6 +369,8 @@ mod tests {
             // String encoding.
             4, 102, 105, 122, 122,
             // enum 0
+            0,
+            // boolean 0
             0,
         ]);
         let p2 = postcard::from_bytes(b.as_slice())?;
@@ -423,7 +426,7 @@ mod tests {
             ..Store::default()
         };
         store.upsert_post(&Post{
-            date: NaiveDate::from_ymd(2020, 1, 1),
+            date: NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?,
             slug: "my-first-post".to_string(),
             title: "My first post".to_string(),
             content_type: PostContentType::Markdown,
@@ -434,7 +437,7 @@ mod tests {
         println!("{:#?}", store.list_object_meta().await?);
 
         let (post, content) = store.get_post_raw("my-first-post").await?.unwrap_or_default();
-        assert_eq!(post.date, NaiveDate::from_ymd(2020, 1, 1));
+        assert_eq!(post.date, NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?);
         assert_eq!(post.slug, "my-first-post");
         assert_eq!(post.title, "My first post");
         assert_eq!(post.content_type, PostContentType::Markdown);
@@ -442,9 +445,8 @@ mod tests {
         assert_eq!(post.labels, vec!["blue".to_string(), "green".to_string()]);
         assert_eq!(content, "my-content".to_string());
         assert_eq!(store.list_object_meta().await?.len(), 4);
-        
         store.upsert_post(&Post{
-            date: NaiveDate::from_ymd(2020, 1, 2),
+            date: NaiveDate::from_ymd_opt(2020, 1, 2).ok_or(anyhow!("invalid date"))?,
             slug: "my-first-post".to_string(),
             title: "My updated first post".to_string(),
             content_type: PostContentType::Markdown,
@@ -453,7 +455,7 @@ mod tests {
         }, "my-updated-content").await?;
 
         let (post, content) = store.get_post_raw("my-first-post").await?.unwrap_or_default();
-        assert_eq!(post.date, NaiveDate::from_ymd(2020, 1, 2));
+        assert_eq!(post.date, NaiveDate::from_ymd_opt(2020, 1, 2).ok_or(anyhow!("invalid date"))?);
         assert_eq!(post.slug, "my-first-post");
         assert_eq!(post.title, "My updated first post");
         assert_eq!(post.content_type, PostContentType::Markdown);
@@ -461,7 +463,7 @@ mod tests {
         assert_eq!(post.labels, vec!["green".to_string(), "red".to_string()]);
         assert_eq!(content, "my-updated-content".to_string());
         assert_eq!(store.list_object_meta().await?.len(), 4);
-        
+
         Ok(())
     }
 }
