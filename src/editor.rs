@@ -10,6 +10,7 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{delete, get, post};
 use chrono::NaiveDate;
+use maud::html;
 use serde::Deserialize;
 
 #[derive(Debug,Eq,PartialEq,Ord, PartialOrd,Clone)]
@@ -36,6 +37,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/posts/{id}", get(edit_post_handler))
         .route("/posts/{id}", post(submit_edit_post_handler))
         .route("/posts/{id}", delete(submit_delete_post_handler))
+        .route("/debug", get(debug_handler))
         .fallback(not_found_handler)
         .with_state(Arc::new(store));
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
@@ -167,4 +169,10 @@ async fn submit_delete_post_handler(State(store): State<Arc<Store>>, headers: He
             Ok((StatusCode::NO_CONTENT, hm).into_response())
         }
     }
+}
+
+async fn debug_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> Result<Response, ResponseError> {
+    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let objects = store.list_object_meta().await.map_resp_err(&htmx_context)?;
+    Ok(views::debug_objects_page(objects, htmx_context).into_response())
 }

@@ -1,6 +1,8 @@
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use maud::{html, Markup, DOCTYPE};
+use object_store::ObjectMeta;
+use crate::editor::views;
 use crate::htmx::HtmxContext;
 use crate::store::Post;
 use crate::store::PostContentType::{Markdown, RestructuredText};
@@ -35,7 +37,7 @@ fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {
     }
 }
 
-fn render_body_semantics(header: &str, sections: Vec<Markup>) -> Markup {
+pub(crate) fn render_body_semantics(header: &str, sections: Vec<Markup>) -> Markup {
     html! {
         main class="container" {
             header {
@@ -45,6 +47,8 @@ fn render_body_semantics(header: &str, sections: Vec<Markup>) -> Markup {
                     a href="/posts" { "posts" }
                     " | "
                     a href="/images" { "images" }
+                    " | "
+                    a href="/debug" { "debug" }
                 }
                 h2 { (header) }
             }
@@ -205,4 +209,35 @@ pub(crate) fn edit_posts_page(post: Post, content: String, error: Option<String>
             (render_post_form(Some((post, content)), true))
         }
     }]), htmx_context)
+}
+
+pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<HtmxContext>) -> Response {
+    render_body_html_or_htmx(StatusCode::OK, "Debug", render_body_semantics("Debug", vec![
+        html! {
+            table {
+                thead {
+                    tr {
+                        th { "Location" }
+                        th { "Size" }
+                        th { "Last Modified" }
+                    }
+                }
+                tbody {
+                    @if objects.is_empty() {
+                        tr {
+                            td colspan="3" { "No objects" }
+                        }
+                    } @else {
+                        @for object in objects {
+                            tr {
+                                td { (object.location) }
+                                td { (object.size) }
+                                td { (object.last_modified) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]), htmx_context)
 }

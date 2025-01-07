@@ -13,7 +13,7 @@ use image::ImageReader;
 use itertools::Itertools;
 use object_store::local::LocalFileSystem;
 use object_store::path::{Path, PathPart};
-use object_store::{ObjectStore, PutOptions, PutPayload};
+use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::slice::Iter;
@@ -305,12 +305,10 @@ impl Store {
         }
     }
 
-    #[warn(dead_code)]
-    pub(crate) async fn debug_list_paths(&self) -> Result<Vec<String>, Error> {
+    pub async fn list_object_meta(&self) -> Result<Vec<ObjectMeta>, Error> {
         Ok(self.os.list(None)
             .boxed()
-            .map_ok(|m| m.location.to_string())
-            .try_collect::<Vec<String>>().await?)
+            .try_collect::<Vec<ObjectMeta>>().await?)
     }
 }
 
@@ -427,7 +425,7 @@ mod tests {
             labels: vec!["blue".to_string(), "green".to_string()],
         }, "my-content").await?;
 
-        println!("{:#?}", store.debug_list_paths().await?);
+        println!("{:#?}", store.list_object_meta().await?);
 
         let (post, content) = store.get_post_raw("my-first-post").await?.unwrap_or_default();
         assert_eq!(post.date, NaiveDate::from_ymd(2020, 1, 1));
