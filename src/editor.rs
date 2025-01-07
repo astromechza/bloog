@@ -10,7 +10,6 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{delete, get, post};
 use chrono::NaiveDate;
-use maud::html;
 use serde::Deserialize;
 
 #[derive(Debug,Eq,PartialEq,Ord, PartialOrd,Clone)]
@@ -99,7 +98,9 @@ struct NewPostForm {
     title: String,
     date: NaiveDate,
     content_type: PostContentType,
+    published: Option<bool>,
     raw_content: String,
+    labels: String,
 }
 
 async fn submit_new_post_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Form(form): Form<NewPostForm>) -> Result<Response, ResponseError> {
@@ -109,7 +110,10 @@ async fn submit_new_post_handler(State(store): State<Arc<Store>>, headers: Heade
         slug: form.slug.clone(),
         title: form.title,
         content_type: form.content_type,
-        labels: vec![],
+        published: form.published.unwrap_or_default(),
+        labels: form.labels.split(",")
+            .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
+            .collect(),
     };
     if store.get_post_raw(form.slug.as_str()).await.map_resp_err(&htmx_context)?.is_some() {
         return Ok(views::new_posts_page(Some((temporary_post, form.raw_content)), Some("slug already exists".to_string()), htmx_context));
@@ -141,7 +145,9 @@ struct EditPostForm {
     title: String,
     date: NaiveDate,
     content_type: PostContentType,
+    published: Option<bool>,
     raw_content: String,
+    labels: String,
 }
 
 async fn submit_edit_post_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug): Path<String>, Form(form): Form<EditPostForm>) -> Result<Response, ResponseError> {
@@ -151,7 +157,10 @@ async fn submit_edit_post_handler(State(store): State<Arc<Store>>, headers: Head
         slug: slug.clone(),
         title: form.title,
         content_type: form.content_type,
-        labels: vec![],
+        published: form.published.unwrap_or_default(),
+        labels: form.labels.split(",")
+            .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
+            .collect(),
     };
     if let Err(e) = store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
         Ok(views::edit_posts_page(temporary_post, form.raw_content, Some(e.to_string()), htmx_context))

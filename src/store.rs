@@ -17,6 +17,7 @@ use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::slice::Iter;
+use tracing::info;
 use url::Url;
 
 #[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord,Default)]
@@ -38,6 +39,7 @@ pub struct Post {
     pub slug: String,
     pub title: String,
     pub content_type: PostContentType,
+    pub published: bool,
     pub labels: Vec<String>,
 }
 
@@ -119,7 +121,7 @@ impl Store {
     pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<(), Error> {
         let post_path = self.sub_path.child("posts").child(post.slug.clone());
 
-        let post_meta = PostMetadata::V1((post.date, post.title.clone(), post.content_type.clone()));
+        let post_meta = PostMetadata::V1((post.date, post.title.clone(), post.content_type.clone(), post.published));
         let post_meta_bytes = postcard::to_allocvec(&post_meta)?;
         let post_meta_raw = BASE64_STANDARD_NO_PAD.encode(&post_meta_bytes);
 
@@ -137,10 +139,11 @@ impl Store {
         // and now clean up anything extra that we don't need
         let cleanup_paths = self.os.list(Some(&post_path))
             .map_ok(|m| m.location)
+            .boxed()
             .try_filter(|p| {
-                let mut parts = p.parts();
-                if let Some((sec, k)) = parts.next_tuple::<(PathPart, PathPart)>() {
-                    return ready((sec.as_ref() == "props" && k.as_ref() != post_meta_raw) ||
+                let tail = path_tail(p, &post_path);
+                if let Some((sec, k)) = tail.parts().next_tuple::<(PathPart, PathPart)>() {
+                    return ready((sec.as_ref() == "props" && k.as_ref() != post_meta_raw.as_str()) ||
                         (sec.as_ref() == "labels" && !post.labels.contains(&k.as_ref().to_string())))
                 }
                 ready(false)
@@ -232,11 +235,12 @@ impl Store {
                 let slug = slug.to_string();
                 let labels = Self::labels_from_paths(paths.iter(), 0);
                 match Self::props_part_from_paths(paths.iter(), 0) {
-                    Some(PostMetadata::V1((date, title, content_type))) => Post {
+                    Some(PostMetadata::V1((date, title, content_type, published))) => Post {
                         date,
                         slug,
                         title,
                         content_type,
+                        published,
                         labels,
                     },
                     None => Post {
@@ -267,11 +271,12 @@ impl Store {
         let post_paths_refs: Vec<&Path> = post_paths.iter().collect();
         let labels = Self::labels_from_paths(post_paths_refs.iter(), 0);
         let post = match Self::props_part_from_paths(post_paths_refs.iter(), 0) {
-            Some(PostMetadata::V1((date, title, content_type))) => Post {
+            Some(PostMetadata::V1((date, title, content_type, published))) => Post {
                 date,
                 slug: slug.to_string(),
                 title,
                 content_type,
+                published,
                 labels,
             },
             None => Post {
@@ -320,7 +325,7 @@ impl Default for Store {
 
 #[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord)]
 enum PostMetadata {
-    V1((NaiveDate, String, PostContentType)),
+    V1((NaiveDate, String, PostContentType, bool)),
 }
 
 impl TryFrom<PathPart<'_>> for PostMetadata {
@@ -351,7 +356,7 @@ mod tests {
 
     #[test]
     fn test_ser_der() -> Result<(), Error> {
-        let p = PostMetadata::V1((NaiveDate::from_ymd_opt(2024, 1, 2).unwrap_or_default(), "fizz".to_string(), PostContentType::Markdown));
+        let p = PostMetadata::V1((NaiveDate::from_ymd_opt(2024, 1, 2).unwrap_or_default(), "fizz".to_string(), PostContentType::Markdown, false));
         let b = postcard::to_allocvec(&p)?;
         assert_eq!(b.len(), 18);
         assert_eq!(b, vec![
@@ -422,6 +427,7 @@ mod tests {
             slug: "my-first-post".to_string(),
             title: "My first post".to_string(),
             content_type: PostContentType::Markdown,
+            published: true,
             labels: vec!["blue".to_string(), "green".to_string()],
         }, "my-content").await?;
 
@@ -432,9 +438,30 @@ mod tests {
         assert_eq!(post.slug, "my-first-post");
         assert_eq!(post.title, "My first post");
         assert_eq!(post.content_type, PostContentType::Markdown);
+        assert!(post.published);
         assert_eq!(post.labels, vec!["blue".to_string(), "green".to_string()]);
         assert_eq!(content, "my-content".to_string());
+        assert_eq!(store.list_object_meta().await?.len(), 4);
+        
+        store.upsert_post(&Post{
+            date: NaiveDate::from_ymd(2020, 1, 2),
+            slug: "my-first-post".to_string(),
+            title: "My updated first post".to_string(),
+            content_type: PostContentType::Markdown,
+            published: false,
+            labels: vec!["red".to_string(), "green".to_string()],
+        }, "my-updated-content").await?;
 
+        let (post, content) = store.get_post_raw("my-first-post").await?.unwrap_or_default();
+        assert_eq!(post.date, NaiveDate::from_ymd(2020, 1, 2));
+        assert_eq!(post.slug, "my-first-post");
+        assert_eq!(post.title, "My updated first post");
+        assert_eq!(post.content_type, PostContentType::Markdown);
+        assert!(!post.published);
+        assert_eq!(post.labels, vec!["green".to_string(), "red".to_string()]);
+        assert_eq!(content, "my-updated-content".to_string());
+        assert_eq!(store.list_object_meta().await?.len(), 4);
+        
         Ok(())
     }
 }
