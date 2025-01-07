@@ -17,6 +17,7 @@ use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::slice::Iter;
+use tracing::info;
 use url::Url;
 
 #[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord,Default)]
@@ -444,7 +445,6 @@ mod tests {
         assert_eq!(post.labels, vec!["blue".to_string(), "green".to_string()]);
         assert_eq!(content, "my-content".to_string());
         assert_eq!(store.list_object_meta().await?.len(), 4);
-
         store.upsert_post(&Post{
             date: NaiveDate::from_ymd_opt(2020, 1, 2).ok_or(anyhow!("invalid date"))?,
             slug: "my-first-post".to_string(),
