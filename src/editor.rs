@@ -1,15 +1,16 @@
 mod views;
 
-use super::store::{Post, PostContentType, Store};
+use super::store::{ImageVariant, Post, PostContentType, Store};
 use crate::htmx::HtmxContext;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Form, Router};
 use std::sync::Arc;
-use anyhow::anyhow;
-use axum::extract::{Path, State};
+use axum::extract::{Multipart, Path, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{delete, get, post};
 use chrono::NaiveDate;
+use image::EncodableLayout;
+use itertools::Itertools;
 use serde::Deserialize;
 
 #[derive(Debug,Eq,PartialEq,Ord, PartialOrd,Clone)]
@@ -28,8 +29,10 @@ impl Default for Config {
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/", get(home_handler))
-        .route("/images", get(|| async { Result::<Response, ResponseError>::Err(ResponseError(anyhow!("not implemented"), None)) }))
-        .route("/images", post(|| async { Result::<Response, ResponseError>::Err(ResponseError(anyhow!("not implemented"), None)) }))
+        .route("/images", get(list_images_handler))
+        .route("/images", post(submit_image_handler))
+        .route("/images/{slug}", get(get_image_handler))
+        .route("/images/{slug}", delete(submit_delete_image_handler))
         .route("/posts", get(posts_handler))
         .route("/posts/new", get(new_post_handler))
         .route("/posts/new", post(submit_new_post_handler))
@@ -169,22 +172,78 @@ async fn submit_edit_post_handler(State(store): State<Arc<Store>>, headers: Head
     }
 }
 
-async fn submit_delete_post_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug): Path<String>) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
-    store.delete_post(slug.as_str()).await.map_resp_err(&htmx_context)?;
-    let redirect_to = "/posts";
+fn redirect_response(to: &str, htmx_context: Option<HtmxContext>) -> Result<Response, ResponseError> {
     match htmx_context {
-        None => Ok(Redirect::to(redirect_to).into_response()),
+        None => Ok(Redirect::to(to).into_response()),
         Some(_) => {
             let mut hm = HeaderMap::new();
-            hm.insert("HX-Location", HeaderValue::from_str(redirect_to).map_resp_err(&htmx_context)?);
+            hm.insert("HX-Location", HeaderValue::from_str(to).map_resp_err(&htmx_context)?);
             Ok((StatusCode::NO_CONTENT, hm).into_response())
         }
     }
+}
+
+async fn submit_delete_post_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug): Path<String>) -> Result<Response, ResponseError> {
+    let htmx_context = HtmxContext::try_from(&headers).ok();
+    store.delete_post(slug.as_str()).await.map_resp_err(&htmx_context)?;
+    redirect_response("/posts", htmx_context)
 }
 
 async fn debug_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
     let objects = store.list_object_meta().await.map_resp_err(&htmx_context)?;
     Ok(views::debug_objects_page(objects, htmx_context).into_response())
+}
+
+async fn list_images_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> Result<Response, ResponseError> {
+    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let images = store.list_images().await.map_resp_err(&htmx_context)?;
+    Ok(views::list_images_page(images, None, htmx_context).into_response())
+}
+
+async fn submit_image_handler(State(store): State<Arc<Store>>, headers: HeaderMap, mut multipart: Multipart) -> Result<Response, ResponseError> {
+    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let error: Option<anyhow::Error> = match multipart.next_field().await.map_resp_err(&htmx_context)? {
+        Some(f) if f.name().is_some_and(|x| x == "slug") => {
+            let pre_slug = f.text().await.map_resp_err(&htmx_context)?;
+            match multipart.next_field().await.map_resp_err(&htmx_context)? {
+                Some(f) if f.name().is_some_and(|x| x == "image") => {
+                    let image_bytes = f.bytes().await.map_resp_err(&htmx_context)?;
+                    store.create_image(pre_slug.as_str(), image_bytes.as_bytes()).await.err()
+                },
+                _ => Some(anyhow::anyhow!("Multipart missing image field"))
+            }
+        },
+        _ => Some(anyhow::anyhow!("Multipart missing slug field")),
+    };
+    let images = store.list_images().await.map_resp_err(&htmx_context)?;
+    Ok(views::list_images_page(images, error.map(|e| e.to_string()), htmx_context).into_response())
+}
+
+async fn get_image_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug_variant): Path<String>) -> Result<Response, ResponseError> {
+    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let mut slug_parts = slug_variant.split('.');
+
+    if let Some(slug) = slug_parts.next() {
+        if let Some(variant) = slug_parts.next_tuple::<(&str, &str)>()
+            .and_then(|(a, b)| ImageVariant::try_from(a).ok().filter(|_| b == "webp")) {
+            if let Some(image) = store.get_image_raw(slug, variant).await.map_resp_err(&htmx_context)? {
+                let mut hm = HeaderMap::new();
+                hm.insert("Content-Type", HeaderValue::from_static("image/webp"));
+                Ok((StatusCode::OK, hm, image).into_response())
+            } else {
+                Ok(StatusCode::NOT_FOUND.into_response())
+            }
+        } else {
+            Ok(views::get_image_page(slug.to_string(), htmx_context).into_response())
+        }
+    } else {
+        Ok(StatusCode::NOT_FOUND.into_response())
+    }
+}
+
+async fn submit_delete_image_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug): Path<String>) -> Result<Response, ResponseError> {
+    let htmx_context = HtmxContext::try_from(&headers).ok();
+    store.delete_image(slug.as_str()).await.map_resp_err(&htmx_context)?;
+    redirect_response("/images", htmx_context)
 }

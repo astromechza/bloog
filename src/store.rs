@@ -93,7 +93,6 @@ pub struct Store {
     sub_path: Path,
 }
 
-#[allow(dead_code)]
 impl Store {
     const MEDIUM_VARIANT_WIDTH: u32 = 1000;
     const MEDIUM_VARIANT_HEIGHT: u32 = 1000;
@@ -104,7 +103,6 @@ impl Store {
         Self { os, sub_path }
     }
 
-    #[allow(dead_code)]
     pub fn from_url(url: &Url) -> Result<Self, Error> {
         if url.scheme() != "file" {
             let opts = url.query_pairs()

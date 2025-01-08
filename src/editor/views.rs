@@ -250,3 +250,55 @@ pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<
         }
     ]), htmx_context)
 }
+
+pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
+    render_body_html_or_htmx(StatusCode::OK, "Images", render_body_semantics("Images", vec![
+        html! {
+            @if let Some(e) = error {
+                div {
+                    (e)
+                }
+            }
+            form action="/images" method="post" enctype="multipart/form-data" {
+                div.row {
+                    div.column {
+                        label for="slug" { "URL Slug" }
+                        input type="text" name="slug" spellcheck="true" required="true" placeholder="the-url-slug-of-this-image";
+                    }
+                    div.column {
+                        label for="images" { "Image" }
+                        input type="file" name="image" required="true";
+                    }
+                }
+                div.row {
+                    div.column {
+                        button type="submit" { "Submit" }
+                    }
+                }
+            }
+            div.row {
+                @if images.is_empty() {
+                    div.column {
+                        "No images"
+                    }
+                }
+                @for image in images {
+                    div.column-25 {
+                        a href={ "/images/" (image) } {
+                            img src={ "/images/" (image) ".thumbnail.webp" };
+                        }
+                    }
+                }
+            }
+        }
+    ]), htmx_context)
+}
+
+
+pub(crate) fn get_image_page(image: String, htmx_context: Option<HtmxContext>) -> Response {
+    render_body_html_or_htmx(StatusCode::OK, "Image", render_body_semantics("Image", vec![
+        html! {
+            img src={ "/images/" (image) ".original.webp" };
+        }
+    ]), htmx_context)
+}
