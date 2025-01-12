@@ -365,7 +365,7 @@ mod tests {
     fn test_ser_der() -> Result<(), Error> {
         let p = PostMetadata::V1((NaiveDate::from_ymd_opt(2024, 1, 2).unwrap_or_default(), "fizz".to_string(), IsPublished(false)));
         let b = postcard::to_allocvec(&p)?;
-        assert_eq!(b.len(), 19);
+        assert_eq!(b.len(), 18);
         assert_eq!(b, vec![
             // enum 0
             0,
@@ -374,8 +374,6 @@ mod tests {
             10, 50, 48, 50, 52, 45, 48, 49, 45, 48, 50,
             // String encoding.
             4, 102, 105, 122, 122,
-            // enum 0
-            0,
             // boolean 0
             0,
         ]);
