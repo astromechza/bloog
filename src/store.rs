@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use crate::path_utils::path_tail;
 use anyhow::{anyhow, Context, Error};
 use base64::prelude::BASE64_STANDARD_NO_PAD;
@@ -17,27 +16,16 @@ use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::slice::Iter;
+use axum::http::HeaderValue;
+use image::codecs::jpeg::JpegEncoder;
+use regex::Regex;
 use url::Url;
-
-#[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord,Default)]
-pub enum PostContentType {
-    #[default]
-    Markdown,
-    RestructuredText,
-}
-
-impl Display for PostContentType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
 
 #[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord,Default)]
 pub struct Post {
     pub date: NaiveDate,
     pub slug: String,
     pub title: String,
-    pub content_type: PostContentType,
     pub published: bool,
     pub labels: Vec<String>,
 }
@@ -50,12 +38,22 @@ pub enum ImageVariant {
     Original,
 }
 
+impl From<ImageVariant> for HeaderValue {
+    fn from(v: ImageVariant) -> HeaderValue {
+        match v {
+            ImageVariant::Thumbnail => HeaderValue::from_static("image/jpeg"),
+            ImageVariant::Medium => HeaderValue::from_static("image/jpeg"),
+            ImageVariant::Original => HeaderValue::from_static("image/webp"),
+        }
+    }
+}
+
 impl From<ImageVariant> for String {
     fn from(v: ImageVariant) -> String {
         match v {
-            ImageVariant::Thumbnail => "thumbnail".to_string(),
-            ImageVariant::Medium => "medium".to_string(),
-            ImageVariant::Original => "original".to_string(),
+            ImageVariant::Thumbnail => "thumbnail.jpg".to_string(),
+            ImageVariant::Medium => "medium.jpg".to_string(),
+            ImageVariant::Original => "original.webp".to_string(),
         }
     }
 }
@@ -64,11 +62,11 @@ impl TryFrom<&str> for ImageVariant {
     type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if value == "thumbnail" {
+        if value == "thumbnail.jpg" {
             Ok(ImageVariant::Thumbnail)
-        } else if value == "medium" {
+        } else if value == "medium.jpg" {
             Ok(ImageVariant::Medium)
-        } else if value == "original" {
+        } else if value == "original.webp" {
             Ok(ImageVariant::Original)
         } else {
             Err(anyhow!("Unknown image variant: {}", value))
@@ -80,7 +78,7 @@ impl TryFrom<&str> for ImageVariant {
 /// provider. The schema looks like:
 ///
 /// <pre>
-/// (sub_path)/images/(slug)/(variant).webp
+/// (sub_path)/images/(slug)/(variant)
 /// (sub_path)/posts/(slug)/props/(encoded props)
 /// (sub_path)/posts/(slug)/content
 /// (sub_path)/posts/(slug)/label/(key)
@@ -94,8 +92,8 @@ pub struct Store {
 }
 
 impl Store {
-    const MEDIUM_VARIANT_WIDTH: u32 = 1000;
-    const MEDIUM_VARIANT_HEIGHT: u32 = 1000;
+    const MEDIUM_VARIANT_WIDTH: u32 = 800;
+    const MEDIUM_VARIANT_HEIGHT: u32 = 550;
     const THUMB_VARIANT_WIDTH: u32 = 200;
     const THUMB_VARIANT_HEIGHT: u32 = 200;
 
@@ -118,9 +116,12 @@ impl Store {
     }
 
     pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<(), Error> {
+        let re = Regex::new(r"^[A-Za-z\-_0-9]{3,100}$")?;
+        if !re.is_match(post.slug.as_str()) {
+            return Err(Error::msg("invalid post slug"));
+        }
         let post_path = self.sub_path.child("posts").child(post.slug.clone());
-
-        let post_meta = PostMetadata::V1((post.date, post.title.clone(), post.content_type.clone(), post.published));
+        let post_meta = PostMetadata::V1((post.date, post.title.clone(), IsPublished(post.published)));
         let post_meta_bytes = postcard::to_allocvec(&post_meta)?;
         let post_meta_raw = BASE64_STANDARD_NO_PAD.encode(&post_meta_bytes);
 
@@ -168,29 +169,33 @@ impl Store {
     }
 
     pub async fn create_image(&self, pre_slug: &str, raw: &[u8]) -> Result<String, Error> {
+        let re = Regex::new(r"^[A-Za-z\-_0-9]{3,60}$")?;
+        if !re.is_match(pre_slug) {
+            return Err(Error::msg("invalid image slug"));
+        }
         let slug = format!("{}-{}", Local::now().format("%Y%m%dT%H%M%S"), pre_slug);
         let image_path = self.sub_path.child("images").child(slug.clone());
         let image_reader = ImageReader::new(Cursor::new(raw))
             .with_guessed_format().context("failed to guess format")?;
         let image = image_reader.decode()?;
         let medium = if image.width() > Self::MEDIUM_VARIANT_WIDTH || image.height() > Self::MEDIUM_VARIANT_HEIGHT {
-            image.resize(Self::MEDIUM_VARIANT_WIDTH, Self::MEDIUM_VARIANT_HEIGHT, image::imageops::FilterType::Lanczos3)
+            image.resize(Self::MEDIUM_VARIANT_WIDTH, Self::MEDIUM_VARIANT_HEIGHT, image::imageops::FilterType::Triangle).into_rgb8()
         } else {
-            image.clone()
+            image.clone().into_rgb8()
         };
-        let thumbnail = image.thumbnail(Self::THUMB_VARIANT_WIDTH, Self::THUMB_VARIANT_HEIGHT);
+        let thumbnail = image.thumbnail(Self::THUMB_VARIANT_WIDTH, Self::THUMB_VARIANT_HEIGHT).into_rgb8();
 
         let mut original_data = vec![];
         image.write_with_encoder(WebPEncoder::new_lossless(&mut original_data))?;
-        self.os.put(&image_path.child("original.webp"), PutPayload::from(original_data)).await?;
-
+        self.os.put(&image_path.child(String::from(ImageVariant::Original)), PutPayload::from(original_data)).await?;
         let mut medium_data = vec![];
-        medium.write_with_encoder(WebPEncoder::new_lossless(&mut medium_data))?;
-        self.os.put(&image_path.child("medium.webp"), PutPayload::from(medium_data)).await?;
+
+        medium.write_with_encoder(JpegEncoder::new_with_quality(&mut medium_data, 90))?;
+        self.os.put(&image_path.child(String::from(ImageVariant::Medium)), PutPayload::from(medium_data)).await?;
 
         let mut thumbnail_data = vec![];
-        thumbnail.write_with_encoder(WebPEncoder::new_lossless(&mut thumbnail_data))?;
-        self.os.put(&image_path.child("thumbnail.webp"), PutPayload::from(thumbnail_data)).await?;
+        thumbnail.write_with_encoder(JpegEncoder::new_with_quality(&mut thumbnail_data, 85))?;
+        self.os.put(&image_path.child(String::from(ImageVariant::Thumbnail)), PutPayload::from(thumbnail_data)).await?;
 
         Ok(slug)
     }
@@ -234,12 +239,11 @@ impl Store {
                 let slug = slug.to_string();
                 let labels = Self::labels_from_paths(paths.iter(), 0);
                 match Self::props_part_from_paths(paths.iter(), 0) {
-                    Some(PostMetadata::V1((date, title, content_type, published))) => Post {
+                    Some(PostMetadata::V1((date, title, published))) => Post {
                         date,
                         slug,
                         title,
-                        content_type,
-                        published,
+                        published: published.into(),
                         labels,
                     },
                     None => Post {
@@ -270,12 +274,11 @@ impl Store {
         let post_paths_refs: Vec<&Path> = post_paths.iter().collect();
         let labels = Self::labels_from_paths(post_paths_refs.iter(), 0);
         let post = match Self::props_part_from_paths(post_paths_refs.iter(), 0) {
-            Some(PostMetadata::V1((date, title, content_type, published))) => Post {
+            Some(PostMetadata::V1((date, title, published))) => Post {
                 date,
                 slug: slug.to_string(),
                 title,
-                content_type,
-                published,
+                published: published.into(),
                 labels,
             },
             None => Post {
@@ -297,11 +300,7 @@ impl Store {
     }
 
     pub async fn get_image_raw(&self, slug: &str, variant: ImageVariant) -> Result<Option<Bytes>, Error> {
-        let variant_slug = match variant {
-            ImageVariant::Original => "original.webp",
-            ImageVariant::Thumbnail => "thumbnail.webp",
-            ImageVariant::Medium => "medium.webp"
-        };
+        let variant_slug: String = variant.into();
         match self.os.get(&self.sub_path.child("images").child(slug).child(variant_slug)).await {
             Ok(gr) => Ok(Some(gr.bytes().await?)),
             Err(object_store::Error::NotFound{..}) => Ok(None),
@@ -323,8 +322,17 @@ impl Default for Store {
 }
 
 #[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord)]
+pub struct IsPublished(bool);
+
+impl From<IsPublished> for bool {
+    fn from(is_published: IsPublished) -> Self {
+        is_published.0
+    }
+}
+
+#[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord)]
 enum PostMetadata {
-    V1((NaiveDate, String, PostContentType, bool)),
+    V1((NaiveDate, String, IsPublished)),
 }
 
 impl TryFrom<PathPart<'_>> for PostMetadata {
@@ -355,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_ser_der() -> Result<(), Error> {
-        let p = PostMetadata::V1((NaiveDate::from_ymd_opt(2024, 1, 2).unwrap_or_default(), "fizz".to_string(), PostContentType::Markdown, false));
+        let p = PostMetadata::V1((NaiveDate::from_ymd_opt(2024, 1, 2).unwrap_or_default(), "fizz".to_string(), IsPublished(false)));
         let b = postcard::to_allocvec(&p)?;
         assert_eq!(b.len(), 19);
         assert_eq!(b, vec![
@@ -427,7 +435,6 @@ mod tests {
             date: NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?,
             slug: "my-first-post".to_string(),
             title: "My first post".to_string(),
-            content_type: PostContentType::Markdown,
             published: true,
             labels: vec!["blue".to_string(), "green".to_string()],
         }, "my-content").await?;
@@ -438,7 +445,6 @@ mod tests {
         assert_eq!(post.date, NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?);
         assert_eq!(post.slug, "my-first-post");
         assert_eq!(post.title, "My first post");
-        assert_eq!(post.content_type, PostContentType::Markdown);
         assert!(post.published);
         assert_eq!(post.labels, vec!["blue".to_string(), "green".to_string()]);
         assert_eq!(content, "my-content".to_string());
@@ -447,7 +453,6 @@ mod tests {
             date: NaiveDate::from_ymd_opt(2020, 1, 2).ok_or(anyhow!("invalid date"))?,
             slug: "my-first-post".to_string(),
             title: "My updated first post".to_string(),
-            content_type: PostContentType::Markdown,
             published: false,
             labels: vec!["red".to_string(), "green".to_string()],
         }, "my-updated-content").await?;
@@ -456,7 +461,6 @@ mod tests {
         assert_eq!(post.date, NaiveDate::from_ymd_opt(2020, 1, 2).ok_or(anyhow!("invalid date"))?);
         assert_eq!(post.slug, "my-first-post");
         assert_eq!(post.title, "My updated first post");
-        assert_eq!(post.content_type, PostContentType::Markdown);
         assert!(!post.published);
         assert_eq!(post.labels, vec!["green".to_string(), "red".to_string()]);
         assert_eq!(content, "my-updated-content".to_string());
