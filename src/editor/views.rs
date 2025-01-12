@@ -40,14 +40,10 @@ pub(crate) fn render_body_semantics(header: &str, sections: Vec<Markup>) -> Mark
     html! {
         main class="container" {
             header {
-                nav {
-                    a href="/" { "home "}
-                    " | "
-                    a href="/posts" { "posts" }
-                    " | "
-                    a href="/images" { "images" }
-                    " | "
-                    a href="/debug" { "debug" }
+                nav.row {
+                    a.button.button-clear.column href="/posts" { "Posts" }
+                    a.button.button-clear.column href="/images" { "Images" }
+                    a.button.button-clear.column href="/debug" { "Debug" }
                 }
                 h2 { (header) }
             }
@@ -184,11 +180,18 @@ fn render_post_form(current: Option<(Post, String)>, is_new: bool) -> Markup {
             div.column {
                 label for="raw_content" { "Raw Content" }
                 textarea name="raw_content" spellcheck="true" wrap="soft" placeholder="Your post content here.." {
-                    @if let Some((_, c)) = current {
+                    @if let Some((_, c)) = current.as_ref() {
                         (c)
                     }
                 }
                 button type="submit" { "Submit" }
+                @if let Some((c, _)) = current.as_ref() {
+                    @if !is_new {
+                        form action={"/posts/" (c.slug)} hx-confirm="Are you sure you want to delete this post?" method="delete" style="display: inline" {
+                            button.button-clear type="submit" { "Delete" }
+                        }
+                    }
+                }
             }
         }
     }
@@ -215,7 +218,7 @@ pub(crate) fn edit_posts_page(post: Post, content: String, error: Option<String>
             }
         }
         form action={ "/posts/" (post.slug) } method="post" {
-            (render_post_form(Some((post, content)), true))
+            (render_post_form(Some((post, content)), false))
         }
     }]), htmx_context)
 }
@@ -246,6 +249,58 @@ pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<
                         }
                     }
                 }
+            }
+        }
+    ]), htmx_context)
+}
+
+pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
+    render_body_html_or_htmx(StatusCode::OK, "Images", render_body_semantics("Images", vec![
+        html! {
+            @if let Some(e) = error {
+                div {
+                    (e)
+                }
+            }
+            form action="/images" method="post" enctype="multipart/form-data" {
+                div.row {
+                    div.column {
+                        label for="slug" { "URL Slug" }
+                        input type="text" name="slug" spellcheck="true" required="true" placeholder="the-url-slug-of-this-image";
+                    }
+                    div.column {
+                        label for="images" { "Image" }
+                        input type="file" name="image" required="true";
+                    }
+                    div.column {
+                        button type="submit" { "Submit" }
+                    }
+                }
+            }
+            div.row {
+                @if images.is_empty() {
+                    div.column {
+                        "No images"
+                    }
+                }
+                @for image in images {
+                    div.column-25 {
+                        a href={ "/images/" (image) } {
+                            img src={ "/images/" (image) ".thumbnail.webp" };
+                        }
+                    }
+                }
+            }
+        }
+    ]), htmx_context)
+}
+
+pub(crate) fn get_image_page(image: String, htmx_context: Option<HtmxContext>) -> Response {
+    render_body_html_or_htmx(StatusCode::OK, "Image", render_body_semantics("Image", vec![
+        html! {
+            img src={ "/images/" (image) ".original.webp" };
+            form action={"/images/" (image)} hx-confirm="Are you sure you want to delete this image?" method="delete" {
+                button type="submit" { "Delete" }
             }
         }
     ]), htmx_context)
