@@ -1,6 +1,6 @@
 mod views;
 
-use super::store::{ImageVariant, Post, PostContentType, Store};
+use super::store::{ImageVariant, Post, Store};
 use crate::htmx::HtmxContext;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Form, Router};
@@ -10,7 +10,6 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{delete, get, post};
 use chrono::NaiveDate;
 use image::EncodableLayout;
-use itertools::Itertools;
 use serde::Deserialize;
 
 #[derive(Debug,Eq,PartialEq,Ord, PartialOrd,Clone)]
@@ -100,7 +99,6 @@ struct NewPostForm {
     slug: String,
     title: String,
     date: NaiveDate,
-    content_type: PostContentType,
     published: Option<bool>,
     raw_content: String,
     labels: String,
@@ -112,17 +110,16 @@ async fn submit_new_post_handler(State(store): State<Arc<Store>>, headers: Heade
         date: form.date,
         slug: form.slug.clone(),
         title: form.title,
-        content_type: form.content_type,
         published: form.published.unwrap_or_default(),
         labels: form.labels.split(",")
             .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
             .collect(),
     };
     if store.get_post_raw(form.slug.as_str()).await.map_resp_err(&htmx_context)?.is_some() {
-        return Ok(views::new_posts_page(Some((temporary_post, form.raw_content)), Some("slug already exists".to_string()), htmx_context));
+        return Ok(views::new_posts_page(Some((&temporary_post, form.raw_content.as_str())), Some("slug already exists".to_string()), htmx_context));
     }
     if let Err(e) = store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
-        return Ok(views::new_posts_page(Some((temporary_post, form.raw_content)), Some(e.to_string()), htmx_context));
+        return Ok(views::new_posts_page(Some((&temporary_post, form.raw_content.as_str())), Some(e.to_string()), htmx_context));
     }
     let redirect_to = format!("/posts/{}", form.slug);
     match htmx_context {
@@ -138,7 +135,14 @@ async fn submit_new_post_handler(State(store): State<Arc<Store>>, headers: Heade
 async fn edit_post_handler(uri: Uri, Path(id): Path<String>, headers: HeaderMap, State(store): State<Arc<Store>>) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
     match store.get_post_raw(&id).await.map_resp_err(&htmx_context)? {
-        Some((post, raw_content)) => Ok(views::edit_posts_page(post, raw_content, None, htmx_context)),
+        Some((post, raw_content)) => {
+
+            let parser = pulldown_cmark::Parser::new(raw_content.as_str());
+            let mut html_output = String::new();
+            pulldown_cmark::html::push_html(&mut html_output, parser);
+
+            Ok(views::edit_posts_page(post, raw_content, html_output, None, htmx_context))
+        },
         None => Ok(views::not_found_page(Method::GET, uri, HtmxContext::try_from(&headers).ok()))
     }
 }
@@ -147,7 +151,6 @@ async fn edit_post_handler(uri: Uri, Path(id): Path<String>, headers: HeaderMap,
 struct EditPostForm {
     title: String,
     date: NaiveDate,
-    content_type: PostContentType,
     published: Option<bool>,
     raw_content: String,
     labels: String,
@@ -159,16 +162,20 @@ async fn submit_edit_post_handler(State(store): State<Arc<Store>>, headers: Head
         date: form.date,
         slug: slug.clone(),
         title: form.title,
-        content_type: form.content_type,
         published: form.published.unwrap_or_default(),
         labels: form.labels.split(",")
             .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
             .collect(),
     };
+
+    let parser = pulldown_cmark::Parser::new(form.raw_content.as_str());
+    let mut html_output = String::new();
+    pulldown_cmark::html::push_html(&mut html_output, parser);
+
     if let Err(e) = store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
-        Ok(views::edit_posts_page(temporary_post, form.raw_content, Some(e.to_string()), htmx_context))
+        Ok(views::edit_posts_page(temporary_post, form.raw_content, html_output, Some(e.to_string()), htmx_context))
     } else {
-        Ok(views::edit_posts_page(temporary_post, form.raw_content, None, htmx_context))
+        Ok(views::edit_posts_page(temporary_post, form.raw_content, html_output, None, htmx_context))
     }
 }
 
@@ -222,23 +229,22 @@ async fn submit_image_handler(State(store): State<Arc<Store>>, headers: HeaderMa
 
 async fn get_image_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug_variant): Path<String>) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
-    let mut slug_parts = slug_variant.split('.');
-
-    if let Some(slug) = slug_parts.next() {
-        if let Some(variant) = slug_parts.next_tuple::<(&str, &str)>()
-            .and_then(|(a, b)| ImageVariant::try_from(a).ok().filter(|_| b == "webp")) {
-            if let Some(image) = store.get_image_raw(slug, variant).await.map_resp_err(&htmx_context)? {
-                let mut hm = HeaderMap::new();
-                hm.insert("Content-Type", HeaderValue::from_static("image/webp"));
-                Ok((StatusCode::OK, hm, image).into_response())
-            } else {
-                Ok(StatusCode::NOT_FOUND.into_response())
-            }
-        } else {
-            Ok(views::get_image_page(slug.to_string(), htmx_context).into_response())
-        }
+    let (slug, raw_variant) = slug_variant.split_once('.').unwrap_or((slug_variant.as_str(), ""));
+    if raw_variant.is_empty() {
+        Ok(views::get_image_page(slug.to_string(), htmx_context).into_response())
     } else {
-        Ok(StatusCode::NOT_FOUND.into_response())
+        match ImageVariant::try_from(raw_variant) {
+            Err(_) => Ok(StatusCode::NOT_FOUND.into_response()),
+            Ok(variant) => {
+                if let Some(image) = store.get_image_raw(slug, variant.clone()).await.map_resp_err(&htmx_context)? {
+                    let mut hm = HeaderMap::new();
+                    hm.insert("Content-Type", variant.into());
+                    Ok((StatusCode::OK, hm, image).into_response())
+                } else {
+                    Ok(StatusCode::NOT_FOUND.into_response())
+                }
+            }
+        }
     }
 }
 

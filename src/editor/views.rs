@@ -1,10 +1,9 @@
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use maud::{html, Markup, DOCTYPE};
+use maud::{html, Markup, PreEscaped, DOCTYPE};
 use object_store::ObjectMeta;
 use crate::htmx::HtmxContext;
-use crate::store::Post;
-use crate::store::PostContentType::{Markdown, RestructuredText};
+use crate::store::{ImageVariant, Post};
 
 fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {
     html! {
@@ -139,7 +138,7 @@ pub(crate) fn list_posts_page(posts: Vec<Post>, htmx_context: Option<HtmxContext
     }]), htmx_context)
 }
 
-fn render_post_form(current: Option<(Post, String)>, is_new: bool) -> Markup {
+fn render_post_form(current: Option<(&Post, &str)>, is_new: bool) -> Markup {
     html! {
         div.row {
             div.column {
@@ -165,13 +164,6 @@ fn render_post_form(current: Option<(Post, String)>, is_new: bool) -> Markup {
                 input type="date" name="date" required="true" value=[current.as_ref().map(|x| &x.0.date)];
             }
             div.column {
-                label for="content_type" { "Content Type" }
-                select name="content_type" required="true" {
-                    option value=(Markdown) selected[current.as_ref().map(|x| x.0.content_type == Markdown).unwrap_or_default()] { (Markdown) }
-                    option value=(RestructuredText) selected[current.as_ref().map(|x| x.0.content_type == RestructuredText).unwrap_or_default()] { (RestructuredText)}
-                }
-            }
-            div.column {
                 label for="labels" { "Labels" }
                 input type="text" name="labels" placeholder="label,label,label" value=[current.as_ref().map(|x| x.0.labels.join(","))];
             }
@@ -185,6 +177,7 @@ fn render_post_form(current: Option<(Post, String)>, is_new: bool) -> Markup {
                     }
                 }
                 button type="submit" { "Submit" }
+                a.button.button-clear href="/posts" { "Cancel" }
                 @if let Some((c, _)) = current.as_ref() {
                     @if !is_new {
                         form action={"/posts/" (c.slug)} hx-confirm="Are you sure you want to delete this post?" method="delete" style="display: inline" {
@@ -197,7 +190,7 @@ fn render_post_form(current: Option<(Post, String)>, is_new: bool) -> Markup {
     }
 }
 
-pub(crate) fn new_posts_page(post: Option<(Post, String)>, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn new_posts_page(post: Option<(&Post, &str)>, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(StatusCode::OK, "New post", render_body_semantics("New Post", vec![html! {
         @if let Some(e) = error {
             div {
@@ -210,7 +203,7 @@ pub(crate) fn new_posts_page(post: Option<(Post, String)>, error: Option<String>
     }]), htmx_context)
 }
 
-pub(crate) fn edit_posts_page(post: Post, content: String, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn edit_posts_page(post: Post, content: String, html_content: String, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(StatusCode::OK, "Edit post", render_body_semantics("Edit Post", vec![html! {
         @if let Some(e) = error {
             div {
@@ -218,7 +211,14 @@ pub(crate) fn edit_posts_page(post: Post, content: String, error: Option<String>
             }
         }
         form action={ "/posts/" (post.slug) } method="post" {
-            (render_post_form(Some((post, content)), false))
+            (render_post_form(Some((&post, content.as_ref())), false))
+        }
+        hr;
+        h4 { "Rendered" }
+        hr;
+        div {
+            h2 { (post.title) }
+            (PreEscaped(html_content))
         }
     }]), htmx_context)
 }
@@ -286,7 +286,7 @@ pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_
                 @for image in images {
                     div.column-25 {
                         a href={ "/images/" (image) } {
-                            img src={ "/images/" (image) ".thumbnail.webp" };
+                            img src={ "/images/" (image) "." (String::from(ImageVariant::Thumbnail)) };
                         }
                     }
                 }
@@ -298,7 +298,7 @@ pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_
 pub(crate) fn get_image_page(image: String, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(StatusCode::OK, "Image", render_body_semantics("Image", vec![
         html! {
-            img src={ "/images/" (image) ".original.webp" };
+            img src={ "/images/" (image) "." (String::from(ImageVariant::Original)) };
             form action={"/images/" (image)} hx-confirm="Are you sure you want to delete this image?" method="delete" {
                 button type="submit" { "Delete" }
             }
