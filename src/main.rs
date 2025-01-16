@@ -9,6 +9,7 @@ pub(crate) mod htmx;
 pub(crate) mod editor;
 pub(crate) mod store;
 pub(crate) mod path_utils;
+mod conversion;
 
 #[tokio::main]
 async fn main() {

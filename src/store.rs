@@ -1,5 +1,7 @@
+use crate::conversion;
 use crate::path_utils::path_tail;
 use anyhow::{anyhow, Context, Error};
+use axum::http::HeaderValue;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
 use bytes::Bytes;
@@ -7,18 +9,19 @@ use chrono::{Local, NaiveDate};
 use futures::future::ready;
 use futures::stream::FuturesUnordered;
 use futures::{StreamExt, TryStreamExt};
+use image::codecs::jpeg::JpegEncoder;
 use image::codecs::webp::WebPEncoder;
 use image::ImageReader;
 use itertools::Itertools;
 use object_store::local::LocalFileSystem;
 use object_store::path::{Path, PathPart};
 use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fmt::Display;
 use std::io::Cursor;
 use std::slice::Iter;
-use axum::http::HeaderValue;
-use image::codecs::jpeg::JpegEncoder;
-use regex::Regex;
 use url::Url;
 
 #[derive(Debug,Serialize,Deserialize,Clone,PartialEq,Eq,PartialOrd,Ord,Default)]
@@ -38,8 +41,14 @@ pub enum ImageVariant {
     Original,
 }
 
-impl From<ImageVariant> for HeaderValue {
-    fn from(v: ImageVariant) -> HeaderValue {
+impl Display for ImageVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", String::from(self))
+    }
+}
+
+impl From<&ImageVariant> for HeaderValue {
+    fn from(v: &ImageVariant) -> HeaderValue {
         match v {
             ImageVariant::Thumbnail => HeaderValue::from_static("image/jpeg"),
             ImageVariant::Medium => HeaderValue::from_static("image/jpeg"),
@@ -48,8 +57,8 @@ impl From<ImageVariant> for HeaderValue {
     }
 }
 
-impl From<ImageVariant> for String {
-    fn from(v: ImageVariant) -> String {
+impl From<&ImageVariant> for String {
+    fn from(v: &ImageVariant) -> String {
         match v {
             ImageVariant::Thumbnail => "thumbnail.jpg".to_string(),
             ImageVariant::Medium => "medium.jpg".to_string(),
@@ -114,12 +123,27 @@ impl Store {
             Ok(Store::new(Box::new(los), Path::from_url_path(url.path())?))
         }
     }
-
-    pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<(), Error> {
+    
+    pub async fn convert_html_with_validation(&self, content: &str) -> Result<String, Error> {
+        let valid_paths = self.list_images().await?.iter()
+            .flat_map(|i| vec![
+                format!("/images/{}.{}", i, ImageVariant::Medium),
+                format!("/images/{}.{}", i, ImageVariant::Original),
+            ].into_iter())
+            .chain(self.list_posts().await?.iter()
+                .map(|p| format!("/posts/{}", p.slug)))
+            .collect::<HashSet<String>>();
+        conversion::convert(content, valid_paths)
+    }
+    
+    pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<String, Error> {
         let re = Regex::new(r"^[A-Za-z\-_0-9]{3,100}$")?;
         if !re.is_match(post.slug.as_str()) {
             return Err(Error::msg("invalid post slug"));
         }
+        
+        let html_content = self.convert_html_with_validation(content).await?;
+
         let post_path = self.sub_path.child("posts").child(post.slug.clone());
         let post_meta = PostMetadata::V1((post.date, post.title.clone(), IsPublished(post.published)));
         let post_meta_bytes = postcard::to_allocvec(&post_meta)?;
@@ -150,7 +174,7 @@ impl Store {
             })
             .boxed();
         self.os.delete_stream(cleanup_paths).try_collect::<Vec<Path>>().await?;
-        Ok(())
+        Ok(html_content)
     }
 
     async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<(), Error> {
@@ -187,15 +211,15 @@ impl Store {
 
         let mut original_data = vec![];
         image.write_with_encoder(WebPEncoder::new_lossless(&mut original_data))?;
-        self.os.put(&image_path.child(String::from(ImageVariant::Original)), PutPayload::from(original_data)).await?;
+        self.os.put(&image_path.child(String::from(&ImageVariant::Original)), PutPayload::from(original_data)).await?;
         let mut medium_data = vec![];
 
         medium.write_with_encoder(JpegEncoder::new_with_quality(&mut medium_data, 90))?;
-        self.os.put(&image_path.child(String::from(ImageVariant::Medium)), PutPayload::from(medium_data)).await?;
+        self.os.put(&image_path.child(String::from(&ImageVariant::Medium)), PutPayload::from(medium_data)).await?;
 
         let mut thumbnail_data = vec![];
         thumbnail.write_with_encoder(JpegEncoder::new_with_quality(&mut thumbnail_data, 85))?;
-        self.os.put(&image_path.child(String::from(ImageVariant::Thumbnail)), PutPayload::from(thumbnail_data)).await?;
+        self.os.put(&image_path.child(String::from(&ImageVariant::Thumbnail)), PutPayload::from(thumbnail_data)).await?;
 
         Ok(slug)
     }
@@ -299,7 +323,7 @@ impl Store {
             .collect_vec())
     }
 
-    pub async fn get_image_raw(&self, slug: &str, variant: ImageVariant) -> Result<Option<Bytes>, Error> {
+    pub async fn get_image_raw(&self, slug: &str, variant: &ImageVariant) -> Result<Option<Bytes>, Error> {
         let variant_slug: String = variant.into();
         match self.os.get(&self.sub_path.child("images").child(slug).child(variant_slug)).await {
             Ok(gr) => Ok(Some(gr.bytes().await?)),
@@ -386,7 +410,7 @@ mod tests {
     async fn test_store_images_empty() -> Result<(), Error> {
         let store = Store::default();
         assert!(store.list_images().await?.is_empty());
-        assert_eq!(store.get_image_raw("fizz", ImageVariant::Medium).await?, None);
+        assert_eq!(store.get_image_raw("fizz", &ImageVariant::Medium).await?, None);
         Ok(())
     }
 
@@ -411,15 +435,15 @@ mod tests {
 
         let slug = store.create_image("test", eg_data.deref()).await?;
         assert_eq!(store.list_images().await?, vec![slug.clone()]);
-        assert_ne!(store.get_image_raw(&slug, ImageVariant::Thumbnail).await?, None);
-        assert_ne!(store.get_image_raw(&slug, ImageVariant::Medium).await?, None);
-        assert_ne!(store.get_image_raw(&slug, ImageVariant::Original).await?, None);
+        assert_ne!(store.get_image_raw(&slug, &ImageVariant::Thumbnail).await?, None);
+        assert_ne!(store.get_image_raw(&slug, &ImageVariant::Medium).await?, None);
+        assert_ne!(store.get_image_raw(&slug, &ImageVariant::Original).await?, None);
 
         store.delete_image(&slug).await?;
         assert_eq!(store.list_images().await?, Vec::<String>::new());
-        assert_eq!(store.get_image_raw(&slug, ImageVariant::Thumbnail).await?, None);
-        assert_eq!(store.get_image_raw(&slug, ImageVariant::Medium).await?, None);
-        assert_eq!(store.get_image_raw(&slug, ImageVariant::Original).await?, None);
+        assert_eq!(store.get_image_raw(&slug, &ImageVariant::Thumbnail).await?, None);
+        assert_eq!(store.get_image_raw(&slug, &ImageVariant::Medium).await?, None);
+        assert_eq!(store.get_image_raw(&slug, &ImageVariant::Original).await?, None);
         Ok(())
     }
 

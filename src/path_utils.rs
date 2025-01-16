@@ -1,5 +1,5 @@
-use std::path::{PathBuf};
 use object_store::path::Path;
+use std::path::PathBuf;
 
 /// Strips the prefix off the source path and returns a new owned object store [Path].
 #[allow(dead_code)]
