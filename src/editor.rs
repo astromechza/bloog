@@ -1,16 +1,18 @@
 mod views;
 
 use super::store::{ImageVariant, Post, Store};
+use crate::conversion;
 use crate::htmx::HtmxContext;
-use axum::response::{IntoResponse, Redirect, Response};
-use axum::{Form, Router};
-use std::sync::Arc;
-use axum::extract::{Multipart, Path, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post};
+use axum::{Form, Router};
 use chrono::NaiveDate;
 use image::EncodableLayout;
 use serde::Deserialize;
+use std::collections::HashSet;
+use std::sync::Arc;
 
 #[derive(Debug,Eq,PartialEq,Ord, PartialOrd,Clone)]
 pub struct Config {
@@ -40,6 +42,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/posts/{id}", delete(submit_delete_post_handler))
         .route("/debug", get(debug_handler))
         .fallback(not_found_handler)
+        .layer(DefaultBodyLimit::disable())
         .with_state(Arc::new(store));
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
     axum::serve(listener, app).await?;
@@ -136,11 +139,7 @@ async fn edit_post_handler(uri: Uri, Path(id): Path<String>, headers: HeaderMap,
     let htmx_context = HtmxContext::try_from(&headers).ok();
     match store.get_post_raw(&id).await.map_resp_err(&htmx_context)? {
         Some((post, raw_content)) => {
-
-            let parser = pulldown_cmark::Parser::new(raw_content.as_str());
-            let mut html_output = String::new();
-            pulldown_cmark::html::push_html(&mut html_output, parser);
-
+            let html_output = conversion::convert(raw_content.as_str(), HashSet::new()).map_resp_err(&htmx_context)?;
             Ok(views::edit_posts_page(post, raw_content, html_output, None, htmx_context))
         },
         None => Ok(views::not_found_page(Method::GET, uri, HtmxContext::try_from(&headers).ok()))
@@ -167,16 +166,11 @@ async fn submit_edit_post_handler(State(store): State<Arc<Store>>, headers: Head
             .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
             .collect(),
     };
-
-    let parser = pulldown_cmark::Parser::new(form.raw_content.as_str());
-    let mut html_output = String::new();
-    pulldown_cmark::html::push_html(&mut html_output, parser);
-
-    if let Err(e) = store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
-        Ok(views::edit_posts_page(temporary_post, form.raw_content, html_output, Some(e.to_string()), htmx_context))
-    } else {
-        Ok(views::edit_posts_page(temporary_post, form.raw_content, html_output, None, htmx_context))
-    }
+    let (html_content, error) = match store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
+        Err(e) => (String::new(), Some(e.to_string())),
+        Ok(html_content) => (html_content, None),
+    };
+    Ok(views::edit_posts_page(temporary_post, form.raw_content, html_content, error, htmx_context))
 }
 
 fn redirect_response(to: &str, htmx_context: Option<HtmxContext>) -> Result<Response, ResponseError> {
@@ -236,9 +230,9 @@ async fn get_image_handler(State(store): State<Arc<Store>>, headers: HeaderMap, 
         match ImageVariant::try_from(raw_variant) {
             Err(_) => Ok(StatusCode::NOT_FOUND.into_response()),
             Ok(variant) => {
-                if let Some(image) = store.get_image_raw(slug, variant.clone()).await.map_resp_err(&htmx_context)? {
+                if let Some(image) = store.get_image_raw(slug, &variant).await.map_resp_err(&htmx_context)? {
                     let mut hm = HeaderMap::new();
-                    hm.insert("Content-Type", variant.into());
+                    hm.insert("Content-Type", HeaderValue::from(&variant));
                     Ok((StatusCode::OK, hm, image).into_response())
                 } else {
                     Ok(StatusCode::NOT_FOUND.into_response())

@@ -1,9 +1,10 @@
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
-use axum::response::{IntoResponse, Response};
-use maud::{html, Markup, PreEscaped, DOCTYPE};
-use object_store::ObjectMeta;
 use crate::htmx::HtmxContext;
 use crate::store::{ImageVariant, Post};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
+use axum::response::{IntoResponse, Response};
+use chrono::Local;
+use maud::{html, Markup, PreEscaped, DOCTYPE};
+use object_store::ObjectMeta;
 
 fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {
     html! {
@@ -80,7 +81,10 @@ pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxC
             "An internal error has occurred. Please navigate back using the links above."
         }
         code {
-            (err)
+            @for err in err.chain() {
+                (err)
+                br;
+            }
         }
     }]), htmx_context)
 }
@@ -161,7 +165,7 @@ fn render_post_form(current: Option<(&Post, &str)>, is_new: bool) -> Markup {
         div.row {
             div.column {
                 label for="date" { "Post Date" }
-                input type="date" name="date" required="true" value=[current.as_ref().map(|x| &x.0.date)];
+                input type="date" name="date" required="true" value=(current.as_ref().map(|x| &x.0.date).unwrap_or(&Local::now().date_naive()));
             }
             div.column {
                 label for="labels" { "Labels" }
@@ -180,10 +184,25 @@ fn render_post_form(current: Option<(&Post, &str)>, is_new: bool) -> Markup {
                 a.button.button-clear href="/posts" { "Cancel" }
                 @if let Some((c, _)) = current.as_ref() {
                     @if !is_new {
-                        form action={"/posts/" (c.slug)} hx-confirm="Are you sure you want to delete this post?" method="delete" style="display: inline" {
+                        form action={"/posts/" (c.slug)} hx-confirm="Are you sure you want to delete this post?" method="delete" style="display: inline" hx-disabled-elt="find input, find button, find textarea" {
                             button.button-clear type="submit" { "Delete" }
                         }
                     }
+                }
+                details {
+                    summary { "Markdown Hints" }
+                    small { pre { r#"**bold** _italic_ ~strike~ ![alt](/link)
+
+title 1
+: definition 1
+
+Footnote referenced [^1].
+
+| Col  | Col  |
+| ---- | ---- |
+| Cell | Cell |
+
+[^1]: footnote defined"# } }
                 }
             }
         }
@@ -216,7 +235,7 @@ pub(crate) fn edit_posts_page(post: Post, content: String, html_content: String,
         hr;
         h4 { "Rendered" }
         hr;
-        div {
+        div hx-boost="false" {
             h2 { (post.title) }
             (PreEscaped(html_content))
         }
@@ -262,7 +281,7 @@ pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_
                     (e)
                 }
             }
-            form action="/images" method="post" enctype="multipart/form-data" {
+            form action="/images" method="post" enctype="multipart/form-data" hx-disabled-elt="find input[type='text'], find button" {
                 div.row {
                     div.column {
                         label for="slug" { "URL Slug" }
@@ -277,16 +296,38 @@ pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_
                     }
                 }
             }
-            div.row {
-                @if images.is_empty() {
-                    div.column {
-                        "No images"
+            table {
+                thead {
+                    tr {
+                        th { "Image" }
+                        th { "Link" }
+                        th { "Actions" }
                     }
                 }
-                @for image in images {
-                    div.column-25 {
-                        a href={ "/images/" (image) } {
-                            img src={ "/images/" (image) "." (String::from(ImageVariant::Thumbnail)) };
+                tbody {
+                    @if images.is_empty() {
+                        tr {
+                            td colspan="3" { "No images" }
+                        }
+                    } @else {
+                        @for img in images {
+                            tr {
+                                td {
+                                    a href={ "/images/" (img) } {
+                                        img src={ "/images/" (img) "." (String::from(&ImageVariant::Thumbnail)) };
+                                    }
+                                }
+                                td {
+                                    code style="user-select: all" {
+                                        "[![missing alt text](/images/" (img) "." (String::from(&ImageVariant::Medium)) ")](/images/" (img) "." (String::from(&ImageVariant::Original)) ")"
+                                    }
+                                }
+                                td {
+                                    form action={"/images/" (img)} hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
+                                        button.button.button-clear type="submit" { "Delete" }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -298,9 +339,9 @@ pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_
 pub(crate) fn get_image_page(image: String, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(StatusCode::OK, "Image", render_body_semantics("Image", vec![
         html! {
-            img src={ "/images/" (image) "." (String::from(ImageVariant::Original)) };
-            form action={"/images/" (image)} hx-confirm="Are you sure you want to delete this image?" method="delete" {
-                button type="submit" { "Delete" }
+            img src={ "/images/" (image) "." (String::from(&ImageVariant::Original)) };
+            form action={"/images/" (image)} hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
+                button.button type="submit" { "Delete" }
             }
         }
     ]), htmx_context)
