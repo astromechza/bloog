@@ -1,15 +1,15 @@
 // Apply the rule to the whole module.
-#![deny(clippy::unwrap_used,clippy::expect_used,clippy::panic)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::str::FromStr;
 use url::Url;
 
 // Define that crate htmx exists. The code can be found in the htmx file.
-pub(crate) mod htmx;
-pub(crate) mod editor;
-pub(crate) mod store;
-pub(crate) mod path_utils;
 mod conversion;
+pub(crate) mod editor;
+pub(crate) mod htmx;
+pub(crate) mod path_utils;
+pub(crate) mod store;
 
 #[tokio::main]
 async fn main() {

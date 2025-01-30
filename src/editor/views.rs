@@ -1,6 +1,6 @@
-use anyhow::Error;
 use crate::htmx::HtmxContext;
 use crate::store::{Image, Post};
+use anyhow::Error;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use chrono::Local;
@@ -56,7 +56,12 @@ pub(crate) fn render_body_semantics(header: &str, sections: Vec<Markup>) -> Mark
 }
 
 /// Renders either the whole main html, or returns just the content suitable for swapping into the main element.
-pub(crate) fn render_body_html_or_htmx(code: StatusCode, title: impl AsRef<str>, inner: Markup, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn render_body_html_or_htmx(
+    code: StatusCode,
+    title: impl AsRef<str>,
+    inner: Markup,
+    htmx_context: Option<HtmxContext>,
+) -> Response {
     let mut hm = HeaderMap::new();
     hm.insert("Content-Type", HeaderValue::from_static("text/html"));
     hm.insert("Vary", HeaderValue::from_static("HX-Request"));
@@ -67,80 +72,117 @@ pub(crate) fn render_body_html_or_htmx(code: StatusCode, title: impl AsRef<str>,
             hm.insert("HX-Reswap", HeaderValue::from_static("innerHTML"));
         }
         // HTMX requires HTTP 200 responses by default.
-        (StatusCode::OK, hm, html! {
-            title { (title.as_ref()) }
-            (inner)
-        }.0).into_response()
+        (
+            StatusCode::OK,
+            hm,
+            html! {
+                title { (title.as_ref()) }
+                (inner)
+            }
+            .0,
+        )
+            .into_response()
     } else {
         (code, hm, render_body_html(title, inner).0).into_response()
     }
 }
 
-pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxContext>) -> Response {
-    render_body_html_or_htmx(StatusCode::INTERNAL_SERVER_ERROR, "Internal Error", render_body_semantics("Internal Error", vec![html! {
-        p {
-            "An internal error has occurred. Please navigate back using the links above."
-        }
-        code {
-            @for err in err.chain() {
-                (err)
-                br;
-            }
-        }
-    }]), htmx_context)
+pub(crate) fn internal_error_page(
+    err: anyhow::Error,
+    htmx_context: Option<HtmxContext>,
+) -> Response {
+    render_body_html_or_htmx(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Internal Error",
+        render_body_semantics(
+            "Internal Error",
+            vec![html! {
+                p {
+                    "An internal error has occurred. Please navigate back using the links above."
+                }
+                code {
+                    @for err in err.chain() {
+                        (err)
+                        br;
+                    }
+                }
+            }],
+        ),
+        htmx_context,
+    )
 }
 
-pub(crate) fn not_found_page(method: Method, uri: Uri, htmx_context: Option<HtmxContext>) -> Response {
-    render_body_html_or_htmx(StatusCode::NOT_FOUND, "Not Found", render_body_semantics("Not Found", vec![html! {
-        p {
-            code { (method.as_str()) }
-            " "
-            code { (uri.path()) }
-            " not found"
-        }
-    }]), htmx_context)
+pub(crate) fn not_found_page(
+    method: Method,
+    uri: Uri,
+    htmx_context: Option<HtmxContext>,
+) -> Response {
+    render_body_html_or_htmx(
+        StatusCode::NOT_FOUND,
+        "Not Found",
+        render_body_semantics(
+            "Not Found",
+            vec![html! {
+                p {
+                    code { (method.as_str()) }
+                    " "
+                    code { (uri.path()) }
+                    " not found"
+                }
+            }],
+        ),
+        htmx_context,
+    )
 }
 
 pub(crate) fn list_posts_page(posts: Vec<Post>, htmx_context: Option<HtmxContext>) -> Response {
-    render_body_html_or_htmx(StatusCode::OK, "Posts", render_body_semantics("Posts", vec![html! {
+    render_body_html_or_htmx(
+        StatusCode::OK,
+        "Posts",
+        render_body_semantics(
+            "Posts",
+            vec![html! {
 
-        a href="/posts/new" class="button" {
-            "New Post"
-        }
-
-        table {
-            thead {
-                tr {
-                    th { "Date" }
-                    th { "Slug" }
-                    th { "Title" }
-                    th { "Published" }
-                    th { "Labels" }
+                a href="/posts/new" class="button" {
+                    "New Post"
                 }
-            }
-            tbody {
-                @if posts.is_empty() {
-                    tr {
-                        td colspan="5" { "No posts, please create one" }
-                    }
-                } else {
-                    @for post in posts {
+
+                table {
+                    thead {
                         tr {
-                            td {
-                                a href={"/posts/" (post.slug)} {
-                                    (post.date)
+                            th { "Date" }
+                            th { "Slug" }
+                            th { "Title" }
+                            th { "Published" }
+                            th { "Labels" }
+                        }
+                    }
+                    tbody {
+                        @if posts.is_empty() {
+                            tr {
+                                td colspan="5" { "No posts, please create one" }
+                            }
+                        } else {
+                            @for post in posts {
+                                tr {
+                                    td {
+                                        a href={"/posts/" (post.slug)} {
+                                            (post.date)
+                                        }
+                                    }
+                                    td { (post.slug) }
+                                    td { (post.title) }
+                                    td { (post.published) }
+                                    td { (post.labels.join(", ")) }
                                 }
                             }
-                            td { (post.slug) }
-                            td { (post.title) }
-                            td { (post.published) }
-                            td { (post.labels.join(", ")) }
                         }
                     }
                 }
-            }
-        }
-    }]), htmx_context)
+            }],
+        ),
+        htmx_context,
+    )
 }
 
 fn render_post_form(current: Option<(&Post, &str)>, is_new: bool) -> Markup {
@@ -210,146 +252,200 @@ Footnote referenced [^1].
     }
 }
 
-pub(crate) fn new_posts_page(post: Option<(&Post, &str)>, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
-    render_body_html_or_htmx(StatusCode::OK, "New post", render_body_semantics("New Post", vec![html! {
-        @if let Some(e) = error {
-            div {
-                (e)
-            }
-        }
-        form action="/posts/new" method="post" {
-            (render_post_form(post, true))
-        }
-    }]), htmx_context)
-}
-
-pub(crate) fn edit_posts_page(post: Post, content: String, html_content: String, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
-    render_body_html_or_htmx(StatusCode::OK, "Edit post", render_body_semantics("Edit Post", vec![html! {
-        @if let Some(e) = error {
-            div {
-                (e)
-            }
-        }
-        form action={ "/posts/" (post.slug) } method="post" {
-            (render_post_form(Some((&post, content.as_ref())), false))
-        }
-        hr;
-        h4 { "Rendered" }
-        hr;
-        div hx-boost="false" {
-            h2 { (post.title) }
-            (PreEscaped(html_content))
-        }
-    }]), htmx_context)
-}
-
-pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<HtmxContext>) -> Response {
-    render_body_html_or_htmx(StatusCode::OK, "Debug", render_body_semantics("Debug", vec![
-        html! {
-            table {
-                thead {
-                    tr {
-                        th { "Location" }
-                        th { "Size" }
-                        th { "Last Modified" }
+pub(crate) fn new_posts_page(
+    post: Option<(&Post, &str)>,
+    error: Option<String>,
+    htmx_context: Option<HtmxContext>,
+) -> Response {
+    render_body_html_or_htmx(
+        StatusCode::OK,
+        "New post",
+        render_body_semantics(
+            "New Post",
+            vec![html! {
+                @if let Some(e) = error {
+                    div {
+                        (e)
                     }
                 }
-                tbody {
-                    @if objects.is_empty() {
+                form action="/posts/new" method="post" {
+                    (render_post_form(post, true))
+                }
+            }],
+        ),
+        htmx_context,
+    )
+}
+
+pub(crate) fn edit_posts_page(
+    post: Post,
+    content: String,
+    html_content: String,
+    error: Option<String>,
+    htmx_context: Option<HtmxContext>,
+) -> Response {
+    render_body_html_or_htmx(
+        StatusCode::OK,
+        "Edit post",
+        render_body_semantics(
+            "Edit Post",
+            vec![html! {
+                @if let Some(e) = error {
+                    div {
+                        (e)
+                    }
+                }
+                form action={ "/posts/" (post.slug) } method="post" {
+                    (render_post_form(Some((&post, content.as_ref())), false))
+                }
+                hr;
+                h4 { "Rendered" }
+                hr;
+                div hx-boost="false" {
+                    h2 { (post.title) }
+                    (PreEscaped(html_content))
+                }
+            }],
+        ),
+        htmx_context,
+    )
+}
+
+pub(crate) fn debug_objects_page(
+    objects: Vec<ObjectMeta>,
+    htmx_context: Option<HtmxContext>,
+) -> Response {
+    render_body_html_or_htmx(
+        StatusCode::OK,
+        "Debug",
+        render_body_semantics(
+            "Debug",
+            vec![html! {
+                table {
+                    thead {
                         tr {
-                            td colspan="3" { "No objects" }
+                            th { "Location" }
+                            th { "Size" }
+                            th { "Last Modified" }
                         }
-                    } @else {
-                        @for object in objects {
+                    }
+                    tbody {
+                        @if objects.is_empty() {
                             tr {
-                                td { (object.location) }
-                                td { (object.size) }
-                                td { (object.last_modified) }
+                                td colspan="3" { "No objects" }
                             }
-                        }
-                    }
-                }
-            }
-        }
-    ]), htmx_context)
-}
-
-pub(crate) fn list_images_page(images: Vec<Image>, error: Option<Error>, htmx_context: Option<HtmxContext>) -> Response {
-    render_body_html_or_htmx(StatusCode::OK, "Images", render_body_semantics("Images", vec![
-        html! {
-            @if let Some(e) = error {
-                div {
-                    code {
-                        @for err in e.chain() {
-                            (err)
-                            br;
-                        }
-                    }
-                }
-            }
-            form action="/images" method="post" enctype="multipart/form-data" hx-disabled-elt="find input[type='text'], find button" {
-                div.row {
-                    div.column {
-                        label for="slug" { "URL Slug" }
-                        input type="text" name="slug" spellcheck="true" required="true" placeholder="the-url-slug-of-this-image";
-                    }
-                    div.column {
-                        label for="images" { "Image" }
-                        input type="file" name="image" required="true";
-                    }
-                    div.column {
-                        button type="submit" { "Submit" }
-                    }
-                }
-            }
-            table {
-                thead {
-                    tr {
-                        th { "Image" }
-                        th { "Link" }
-                        th { "Actions" }
-                    }
-                }
-                tbody {
-                    @if images.is_empty() {
-                        tr {
-                            td colspan="3" { "No images" }
-                        }
-                    } @else {
-                        @for img in images {
-                            tr {
-                                td {
-                                    a href={ "/images/" (img.to_original().to_path_part().as_ref()) } {
-                                        img src={ "/images/" (img.to_thumbnail().to_path_part().as_ref()) };
-                                    }
-                                }
-                                td {
-                                    code style="user-select: all" {
-                                        "[![missing alt text](/images/" (img.to_medium().to_path_part().as_ref()) ")](/images/" (img.to_original().to_path_part().as_ref()) ")"
-                                    }
-                                }
-                                td {
-                                    form action={"/images/" (img.to_original().to_path_part().as_ref()) } hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
-                                        button.button.button-clear type="submit" { "Delete" }
-                                    }
+                        } @else {
+                            @for object in objects {
+                                tr {
+                                    td { (object.location) }
+                                    td { (object.size) }
+                                    td { (object.last_modified) }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
-    ]), htmx_context)
+            }],
+        ),
+        htmx_context,
+    )
 }
 
-pub(crate) fn get_image_page(image: impl AsRef<Image>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn list_images_page(
+    images: Vec<Image>,
+    error: Option<Error>,
+    htmx_context: Option<HtmxContext>,
+) -> Response {
+    render_body_html_or_htmx(
+        StatusCode::OK,
+        "Images",
+        render_body_semantics(
+            "Images",
+            vec![html! {
+                @if let Some(e) = error {
+                    div {
+                        code {
+                            @for err in e.chain() {
+                                (err)
+                                br;
+                            }
+                        }
+                    }
+                }
+                form action="/images" method="post" enctype="multipart/form-data" hx-disabled-elt="find input[type='text'], find button" {
+                    div.row {
+                        div.column {
+                            label for="slug" { "URL Slug" }
+                            input type="text" name="slug" spellcheck="true" required="true" placeholder="the-url-slug-of-this-image";
+                        }
+                        div.column {
+                            label for="images" { "Image" }
+                            input type="file" name="image" required="true";
+                        }
+                        div.column {
+                            button type="submit" { "Submit" }
+                        }
+                    }
+                }
+                table {
+                    thead {
+                        tr {
+                            th { "Image" }
+                            th { "Link" }
+                            th { "Actions" }
+                        }
+                    }
+                    tbody {
+                        @if images.is_empty() {
+                            tr {
+                                td colspan="3" { "No images" }
+                            }
+                        } @else {
+                            @for img in images {
+                                tr {
+                                    td {
+                                        a href={ "/images/" (img.to_original().to_path_part().as_ref()) } {
+                                            img src={ "/images/" (img.to_thumbnail().to_path_part().as_ref()) };
+                                        }
+                                    }
+                                    td {
+                                        code style="user-select: all" {
+                                            "[![missing alt text](/images/" (img.to_medium().to_path_part().as_ref()) ")](/images/" (img.to_original().to_path_part().as_ref()) ")"
+                                        }
+                                    }
+                                    td {
+                                        form action={"/images/" (img.to_original().to_path_part().as_ref()) } hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
+                                            button.button.button-clear type="submit" { "Delete" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }],
+        ),
+        htmx_context,
+    )
+}
+
+pub(crate) fn get_image_page(
+    image: impl AsRef<Image>,
+    htmx_context: Option<HtmxContext>,
+) -> Response {
     let original_path = image.as_ref().to_path_part();
-    render_body_html_or_htmx(StatusCode::OK, "Image", render_body_semantics("Image", vec![
-        html! {
-            img src={ "/images/" (original_path.as_ref()) };
-            form action={"/images/" (original_path.as_ref()) } hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
-                button.button type="submit" { "Delete" }
-            }
-        }
-    ]), htmx_context)
+    render_body_html_or_htmx(
+        StatusCode::OK,
+        "Image",
+        render_body_semantics(
+            "Image",
+            vec![html! {
+                img src={ "/images/" (original_path.as_ref()) };
+                form action={"/images/" (original_path.as_ref()) } hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
+                    button.button type="submit" { "Delete" }
+                }
+            }],
+        ),
+        htmx_context,
+    )
 }
