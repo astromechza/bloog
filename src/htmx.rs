@@ -3,7 +3,7 @@ use axum::http::HeaderMap;
 use std::str::FromStr;
 use url::Url;
 
-#[derive(Debug,Default,Clone,PartialEq,Eq,PartialOrd,Ord)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct HtmxContext {
     pub(crate) is_boost: bool,
     pub(crate) target: Option<String>,
@@ -21,7 +21,7 @@ impl TryFrom<&HeaderMap> for HtmxContext {
     /// what they deserve (undefined client side behavior)
     fn try_from(value: &HeaderMap) -> Result<Self, Self::Error> {
         if value.get("HX-Request").is_some_and(|x| x.eq("true")) {
-            let mut out = HtmxContext{
+            let mut out = HtmxContext {
                 is_boost: value.get("HX-Boosted").is_some_and(|x| x.eq("true")),
                 ..HtmxContext::default()
             };
