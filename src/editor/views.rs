@@ -1,5 +1,6 @@
+use anyhow::Error;
 use crate::htmx::HtmxContext;
-use crate::store::{ImageVariant, Post};
+use crate::store::{Image, Post};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use chrono::Local;
@@ -273,12 +274,17 @@ pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<
     ]), htmx_context)
 }
 
-pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn list_images_page(images: Vec<Image>, error: Option<Error>, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(StatusCode::OK, "Images", render_body_semantics("Images", vec![
         html! {
             @if let Some(e) = error {
                 div {
-                    (e)
+                    code {
+                        @for err in e.chain() {
+                            (err)
+                            br;
+                        }
+                    }
                 }
             }
             form action="/images" method="post" enctype="multipart/form-data" hx-disabled-elt="find input[type='text'], find button" {
@@ -313,17 +319,17 @@ pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_
                         @for img in images {
                             tr {
                                 td {
-                                    a href={ "/images/" (img) } {
-                                        img src={ "/images/" (img) "." (String::from(&ImageVariant::Thumbnail)) };
+                                    a href={ "/images/" (img.to_original().to_path_part().as_ref()) } {
+                                        img src={ "/images/" (img.to_thumbnail().to_path_part().as_ref()) };
                                     }
                                 }
                                 td {
                                     code style="user-select: all" {
-                                        "[![missing alt text](/images/" (img) "." (String::from(&ImageVariant::Medium)) ")](/images/" (img) "." (String::from(&ImageVariant::Original)) ")"
+                                        "[![missing alt text](/images/" (img.to_medium().to_path_part().as_ref()) ")](/images/" (img.to_original().to_path_part().as_ref()) ")"
                                     }
                                 }
                                 td {
-                                    form action={"/images/" (img)} hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
+                                    form action={"/images/" (img.to_original().to_path_part().as_ref()) } hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
                                         button.button.button-clear type="submit" { "Delete" }
                                     }
                                 }
@@ -336,11 +342,12 @@ pub(crate) fn list_images_page(images: Vec<String>, error: Option<String>, htmx_
     ]), htmx_context)
 }
 
-pub(crate) fn get_image_page(image: String, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn get_image_page(image: impl AsRef<Image>, htmx_context: Option<HtmxContext>) -> Response {
+    let original_path = image.as_ref().to_path_part();
     render_body_html_or_htmx(StatusCode::OK, "Image", render_body_semantics("Image", vec![
         html! {
-            img src={ "/images/" (image) "." (String::from(&ImageVariant::Original)) };
-            form action={"/images/" (image)} hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
+            img src={ "/images/" (original_path.as_ref()) };
+            form action={"/images/" (original_path.as_ref()) } hx-confirm="Are you sure you want to delete this image?" method="delete" hx-disabled-elt="find input[type='text'], find button" {
                 button.button type="submit" { "Delete" }
             }
         }

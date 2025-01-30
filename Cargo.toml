@@ -28,3 +28,4 @@ bytes = { version = "1.9.0" }
 thiserror = "2.0.9"
 tower = { version = "0.5.2" , features = ["timeout"]}
 pulldown-cmark = { version = "0.12.2", default-features = false, features = ["html"] }
+xmlparser = "0.13.6"

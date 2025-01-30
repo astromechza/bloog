@@ -1,6 +1,6 @@
 mod views;
 
-use super::store::{ImageVariant, Post, Store};
+use super::store::{Image, Post, Store};
 use crate::conversion;
 use crate::htmx::HtmxContext;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
@@ -13,6 +13,7 @@ use image::EncodableLayout;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::sync::Arc;
+use object_store::path::PathPart;
 
 #[derive(Debug,Eq,PartialEq,Ord, PartialOrd,Clone)]
 pub struct Config {
@@ -218,32 +219,31 @@ async fn submit_image_handler(State(store): State<Arc<Store>>, headers: HeaderMa
         _ => Some(anyhow::anyhow!("Multipart missing slug field")),
     };
     let images = store.list_images().await.map_resp_err(&htmx_context)?;
-    Ok(views::list_images_page(images, error.map(|e| e.to_string()), htmx_context).into_response())
+    Ok(views::list_images_page(images, error, htmx_context).into_response())
 }
 
-async fn get_image_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug_variant): Path<String>) -> Result<Response, ResponseError> {
+async fn get_image_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug): Path<String>) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
-    let (slug, raw_variant) = slug_variant.split_once('.').unwrap_or((slug_variant.as_str(), ""));
-    if raw_variant.is_empty() {
-        Ok(views::get_image_page(slug.to_string(), htmx_context).into_response())
+
+    let can_html = htmx_context.is_some() || headers.get("Accept")
+        .is_some_and(|hv| hv.to_str().is_ok_and(|t| t.contains("text/html")));
+
+    let img = Image::try_from_path_part(PathPart::from(slug)).unwrap_or_default();
+
+    if can_html {
+        Ok(views::get_image_page(&img, htmx_context).into_response())
+    } else if let Some(image) = store.get_image_raw(&img).await.map_resp_err(&htmx_context)? {
+        let mut hm = HeaderMap::new();
+        hm.insert("Content-Type", img.to_content_type());
+        Ok((StatusCode::OK, hm, image).into_response())
     } else {
-        match ImageVariant::try_from(raw_variant) {
-            Err(_) => Ok(StatusCode::NOT_FOUND.into_response()),
-            Ok(variant) => {
-                if let Some(image) = store.get_image_raw(slug, &variant).await.map_resp_err(&htmx_context)? {
-                    let mut hm = HeaderMap::new();
-                    hm.insert("Content-Type", HeaderValue::from(&variant));
-                    Ok((StatusCode::OK, hm, image).into_response())
-                } else {
-                    Ok(StatusCode::NOT_FOUND.into_response())
-                }
-            }
-        }
+        Ok(StatusCode::NOT_FOUND.into_response())
     }
 }
 
 async fn submit_delete_image_handler(State(store): State<Arc<Store>>, headers: HeaderMap, Path(slug): Path<String>) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
-    store.delete_image(slug.as_str()).await.map_resp_err(&htmx_context)?;
+    let img = Image::try_from_path_part(PathPart::from(slug)).unwrap_or_default();
+    store.delete_image(&img).await.map_resp_err(&htmx_context)?;
     redirect_response("/images", htmx_context)
 }
