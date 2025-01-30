@@ -553,7 +553,11 @@ impl Store {
     pub async fn list_object_meta(&self) -> Result<Vec<ObjectMeta>, Error> {
         Ok(self
             .os
-            .list(None)
+            .list(Some(&self.sub_path))
+            .map_ok(|i| ObjectMeta {
+                location: path_tail(&i.location, &self.sub_path),
+                ..i
+            })
             .boxed()
             .try_collect::<Vec<ObjectMeta>>()
             .await?)
