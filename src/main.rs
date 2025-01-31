@@ -10,6 +10,8 @@ pub(crate) mod editor;
 pub(crate) mod htmx;
 pub(crate) mod path_utils;
 pub(crate) mod store;
+mod viewer;
+mod viewhelpers;
 
 #[tokio::main]
 async fn main() {
@@ -41,7 +43,15 @@ async fn main_err() -> Result<(), anyhow::Error> {
     let args = Args::try_parse()?;
     let store = store::Store::from_url(&args.store_url)?;
     match args.command {
-        Command::Viewer => {}
+        Command::Viewer => {
+            viewer::run(
+                viewer::Config {
+                    port: args.port as u16,
+                },
+                store,
+            )
+                .await?
+        }
         Command::Editor => {
             editor::run(
                 editor::Config {
