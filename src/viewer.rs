@@ -124,8 +124,7 @@ async fn index_handler(
     let htmx_context = HtmxContext::try_from(&headers).ok();
     let label_filter = query.get("label");
     let mut posts = store.list_posts().await.map_resp_err(&htmx_context)?;
-    posts
-        .retain_mut(|p| p.published && label_filter.as_ref().is_none_or(|l| p.labels.contains(l)));
+    posts.retain_mut(|p| p.published && label_filter.as_ref().is_none_or(|l| p.labels.contains(l)));
     posts.sort();
     posts.reverse();
     let group_map = posts.iter().into_group_map_by(|p| p.date.year());
