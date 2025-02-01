@@ -78,6 +78,9 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                       background-size: 100%;
                       background-image: url("/images/link.svg");
                     }
+                    article img:not([src$=".svg"]) {
+                      border-radius: 0.3em;
+                    }
                     "#))
                 }
                 script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js" integrity="sha512-2kIcAizYXhIn8TzUvqzEDZNuDZ+aW7yE/+f1HJHXFjQcGNfv1kqzJSTBRBSlOgp6B/KZsz1K0a3ZTqP9dnxioQ==" crossorigin="anonymous" referrerpolicy="no-referrer" {};
