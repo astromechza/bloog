@@ -46,7 +46,7 @@ pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<String, an
             {
                 if let Ok(mut locked) = error_capture.lock() {
                     locked.replace(format!(
-                        "{} '{}' references to a path which does not exist",
+                        "{} '{}' references a relative path which does not exist",
                         link_type, dest_url
                     ));
                 }

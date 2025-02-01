@@ -1,7 +1,7 @@
 // Apply the rule to the whole module.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::str::FromStr;
+use clap::{Parser, Subcommand};
 use url::Url;
 
 // Define that crate htmx exists. The code can be found in the htmx file.
@@ -10,6 +10,8 @@ pub(crate) mod editor;
 pub(crate) mod htmx;
 pub(crate) mod path_utils;
 pub(crate) mod store;
+mod viewer;
+mod viewhelpers;
 
 #[tokio::main]
 async fn main() {
@@ -18,8 +20,47 @@ async fn main() {
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(version, about)]
+struct Args {
+    #[arg(short, long, env = "BLOOG_STORE_URL", required = true)]
+    store_url: Url,
+
+    #[arg(short, long, env = "BLOOG_PORT", default_value = "8080")]
+    port: usize,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    Viewer,
+    Editor,
+}
+
 async fn main_err() -> Result<(), anyhow::Error> {
-    let store = store::Store::from_url(&Url::from_str("memory:///")?)?;
-    editor::run(editor::Config::default(), store).await?;
+    let args = Args::try_parse()?;
+    let store = store::Store::from_url(&args.store_url)?;
+    match args.command {
+        Command::Viewer => {
+            viewer::run(
+                viewer::Config {
+                    port: args.port as u16,
+                },
+                store,
+            )
+            .await?
+        }
+        Command::Editor => {
+            editor::run(
+                editor::Config {
+                    port: args.port as u16,
+                },
+                store,
+            )
+            .await?
+        }
+    }
     Ok(())
 }

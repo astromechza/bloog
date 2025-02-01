@@ -123,12 +123,10 @@ impl Image {
 
     pub fn resolve_full_path(&self, parent: &Path) -> Path {
         let original = self.to_original();
-        let original_path = parent.child("images").child(original.to_path_part());
-        if self.eq(&original) {
-            original_path
-        } else {
-            original_path.child(self.to_path_part())
-        }
+        parent
+            .child("images")
+            .child(original.to_path_part())
+            .child(self.to_path_part())
     }
 }
 
@@ -144,7 +142,7 @@ impl Default for Image {
 /// provider. The schema looks like:
 ///
 /// <pre>
-/// (sub_path)/images/(slug).(svg|webp)
+/// (sub_path)/images/(slug).(svg|webp)/(slug).(svg|webp)
 /// (sub_path)/images/(slug).(svg|webp)/(slug).(variant).(jpg)
 /// (sub_path)/posts/(slug)/props/(encoded props)
 /// (sub_path)/posts/(slug)/content
@@ -525,9 +523,9 @@ impl Store {
             .os
             .list_with_delimiter(Some(&self.sub_path.child("images")))
             .await?
-            .objects
+            .common_prefixes
             .iter()
-            .map(|om| Image::try_from_path_part(om.location.parts().last().unwrap_or_default()))
+            .map(|om| Image::try_from_path_part(om.parts().last().unwrap_or_default()))
             .filter_map(Result::ok)
             .collect_vec())
     }
@@ -553,7 +551,11 @@ impl Store {
     pub async fn list_object_meta(&self) -> Result<Vec<ObjectMeta>, Error> {
         Ok(self
             .os
-            .list(None)
+            .list(Some(&self.sub_path))
+            .map_ok(|i| ObjectMeta {
+                location: path_tail(&i.location, &self.sub_path),
+                ..i
+            })
             .boxed()
             .try_collect::<Vec<ObjectMeta>>()
             .await?)

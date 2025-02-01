@@ -320,6 +320,7 @@ async fn submit_image_handler(
 async fn get_image_handler(
     State(store): State<Arc<Store>>,
     headers: HeaderMap,
+    url: Uri,
     Path(slug): Path<String>,
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
@@ -332,7 +333,15 @@ async fn get_image_handler(
     let img = Image::try_from_path_part(PathPart::from(slug)).unwrap_or_default();
 
     if can_html {
-        Ok(views::get_image_page(&img, htmx_context).into_response())
+        if store
+            .check_image_exists(&img)
+            .await
+            .map_resp_err(&htmx_context)?
+        {
+            Ok(views::get_image_page(&img, htmx_context).into_response())
+        } else {
+            Ok(views::not_found_page(Method::GET, url, htmx_context).into_response())
+        }
     } else if let Some(image) = store
         .get_image_raw(&img)
         .await
