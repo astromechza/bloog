@@ -1,14 +1,14 @@
 use crate::htmx::HtmxContext;
-use std::ops::Deref;
 use crate::store::{Image, Post};
 use crate::viewhelpers::render_body_html_or_htmx;
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use chrono::{Datelike, Local};
-use lazy_static::lazy_static;
-use maud::{html, Markup, DOCTYPE};
 use clap::crate_name;
 use clap::crate_version;
+use lazy_static::lazy_static;
+use maud::{html, Markup, DOCTYPE};
+use std::ops::Deref;
 
 const POST_DATE_FORMAT: &str = "%e %B %Y";
 const RFC3339_DATE_FORMAT: &str = "%Y-%m-%dT00:00:00Z";
@@ -135,11 +135,7 @@ pub(crate) fn internal_error_page(
     )
 }
 
-
-pub(crate) fn not_found_page(
-    uri: Uri,
-    htmx_context: Option<HtmxContext>,
-) -> impl IntoResponse {
+pub(crate) fn not_found_page(uri: Uri, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::NOT_FOUND,
         "Not Found",
@@ -295,10 +291,7 @@ pub(crate) fn get_post_page(
     ).into_response()
 }
 
-pub(crate) fn get_image_page(
-    image: Image,
-    htmx_context: Option<HtmxContext>,
-) -> impl IntoResponse {
+pub(crate) fn get_image_page(image: Image, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::OK,
         image.to_path_part(),
@@ -320,5 +313,6 @@ pub(crate) fn get_image_page(
         },
         render_body_html,
         htmx_context,
-    ).into_response()
+    )
+    .into_response()
 }

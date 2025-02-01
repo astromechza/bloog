@@ -123,7 +123,10 @@ impl Image {
 
     pub fn resolve_full_path(&self, parent: &Path) -> Path {
         let original = self.to_original();
-        parent.child("images").child(original.to_path_part()).child(self.to_path_part())
+        parent
+            .child("images")
+            .child(original.to_path_part())
+            .child(self.to_path_part())
     }
 }
 

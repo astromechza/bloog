@@ -50,7 +50,7 @@ async fn main_err() -> Result<(), anyhow::Error> {
                 },
                 store,
             )
-                .await?
+            .await?
         }
         Command::Editor => {
             editor::run(
