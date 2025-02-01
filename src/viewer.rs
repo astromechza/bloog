@@ -127,6 +127,7 @@ async fn index_handler(
     posts
         .retain_mut(|p| p.published && label_filter.as_ref().is_none_or(|l| p.labels.contains(l)));
     posts.sort();
+    posts.reverse();
     let group_map = posts.iter().into_group_map_by(|p| p.date.year());
     let year_groups = group_map.iter().sorted().rev().collect_vec();
     Ok(views::get_index_page(
