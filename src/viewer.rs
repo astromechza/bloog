@@ -125,7 +125,7 @@ async fn index_handler(
     let label_filter = query.get("label");
     let mut posts = store.list_posts().await.map_resp_err(&htmx_context)?;
     posts
-        .retain_mut(|p| p.published && label_filter.as_ref().is_none_or(|l| p.labels.contains(&l)));
+        .retain_mut(|p| p.published && label_filter.as_ref().is_none_or(|l| p.labels.contains(l)));
     posts.sort();
     let group_map = posts.iter().into_group_map_by(|p| p.date.year());
     let year_groups = group_map.iter().sorted().rev().collect_vec();
