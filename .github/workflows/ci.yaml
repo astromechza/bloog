@@ -23,6 +23,8 @@ jobs:
       - run: cargo clippy --locked --no-deps
       # Build the final binary on this branch to ensure that it does build on the current architecture.
       - run: cargo build --release --locked
+      # Run the auto formatter and ensure code has been formatted.
+      - run: cargo fmt --check --locked
       # Finally, ensure that no artefacts have been created or changed. This is less necessary now that we use --locked,
       # but there may be other side effects we want to avoid.
       - run: git diff --exit-code
