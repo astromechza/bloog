@@ -1,10 +1,14 @@
 use crate::htmx::HtmxContext;
-use crate::store::Post;
+use std::ops::Deref;
+use crate::store::{Image, Post};
 use crate::viewhelpers::render_body_html_or_htmx;
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use chrono::{Datelike, Local};
+use lazy_static::lazy_static;
 use maud::{html, Markup, DOCTYPE};
+use clap::crate_name;
+use clap::crate_version;
 
 const POST_DATE_FORMAT: &str = "%e %B %Y";
 const RFC3339_DATE_FORMAT: &str = "%Y-%m-%dT00:00:00Z";
@@ -30,7 +34,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                     ul { list-style: circle outside; }
                     ul li { margin-left: 1em; }
                     .index-nav-ul { margin: 0; list-style: circle outside; }
-                    body { background-color: #fdfae9; }
+                    body { background-color: floralwhite; }
                     .footnote-definition { margin-bottom: 2em; }
                     .footnote-definition p { display: inline; }
                     header.row { justify-content: space-between; align-items: center; }
@@ -45,7 +49,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                     .m-b-05 { margin-bottom: 0.5em; }
                     .m-b-1 { margin-bottom: 1em; }
                     .container {
-                      color: #30363B;
+                      color: darkslategrey;
                       font-family: 'Verdana', sans-serif;
                       font-size: 1em;
                       font-weight: 300;
@@ -59,6 +63,11 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                     footer.container {
                       margin: 1em auto;
                     }
+                    hr {
+                        border: 0;
+                        border-top: 0.1rem dotted darkslategrey;
+                        margin: 3.0rem 0;
+                    }
                     "#
                 }
                 script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js" integrity="sha512-2kIcAizYXhIn8TzUvqzEDZNuDZ+aW7yE/+f1HJHXFjQcGNfv1kqzJSTBRBSlOgp6B/KZsz1K0a3ZTqP9dnxioQ==" crossorigin="anonymous" referrerpolicy="no-referrer" {};
@@ -68,6 +77,18 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
             }
         }
     }
+}
+
+lazy_static! {
+    static ref FOOTER: Markup = html! {
+        footer.container {
+            small {
+                "© Ben Meier " (Local::now().year()) " - "
+                a href="https://github.com/astromechza/bloog" { "astromechza/bloog" } " - "
+                (crate_name!()) "@" (crate_version!())
+            }
+        }
+    };
 }
 
 pub(crate) fn internal_error_page(
@@ -107,7 +128,7 @@ pub(crate) fn internal_error_page(
                     }
                 }
             }
-            footer.container { small { "© Ben Meier " (Local::now().year()) } }
+            (FOOTER.deref())
         },
         render_body_html,
         htmx_context,
@@ -142,7 +163,7 @@ pub(crate) fn not_found_page(
                     }
                 }
             }
-            footer.container { small { "© Ben Meier " (Local::now().year()) } }
+            (FOOTER.deref())
         },
         render_body_html,
         htmx_context,
@@ -187,6 +208,7 @@ pub(crate) fn get_index_page(
                         I intentionally don't go back and improve or rewrite old posts, so please take old content with a pinch of salt, and I apologise for any broken links!
                         "#
                     }
+                    hr;
                     @if let Some(l) = label_filter {
                         p {
                             "(Showing posts labeled '" (l) "'. "
@@ -225,7 +247,7 @@ pub(crate) fn get_index_page(
                     }
                 }
             }
-            footer.container { small { "© Ben Meier " (Local::now().year()) } }
+            (FOOTER.deref())
         },
         render_body_html,
         htmx_context,
@@ -252,22 +274,49 @@ pub(crate) fn get_post_page(
                 }
                 section {
                     p.block.m-b-1 {
-                        "Ben Meier - "
                         time datetime=(post.date.format(RFC3339_DATE_FORMAT).to_string()) { (post.date.format(POST_DATE_FORMAT).to_string()) }
                         @if !post.labels.is_empty() {
-                            br;
-                            @for (i, l) in post.labels.iter().enumerate() {
-                                @if i > 0 { " | " }
+                            @for l in post.labels {
+                                " | "
                                 a href={"/?label=" (l)} title={"Filter by label " (l) } { "#" (l) }
                             }
                         }
                     }
+                    hr;
                     article {
                         (content_html)
                     }
                 }
             }
-            footer.container { small { "© Ben Meier " (Local::now().year()) } }
+            (FOOTER.deref())
+        },
+        render_body_html,
+        htmx_context,
+    ).into_response()
+}
+
+pub(crate) fn get_image_page(
+    image: Image,
+    htmx_context: Option<HtmxContext>,
+) -> impl IntoResponse {
+    render_body_html_or_htmx(
+        StatusCode::OK,
+        image.to_path_part(),
+        html! {
+            main.container {
+                header.m-b-05 {
+                    h2 {
+                        a href="/" title="Back to index" {
+                            "/ "
+                        }
+                        (image.to_path_part().as_ref())
+                    }
+                }
+                section {
+                    img src={"/images/" (image.to_path_part().as_ref()) };
+                }
+            }
+            (FOOTER.deref())
         },
         render_body_html,
         htmx_context,
