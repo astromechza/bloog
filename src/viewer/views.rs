@@ -7,7 +7,7 @@ use chrono::{Datelike, Local};
 use clap::crate_name;
 use clap::crate_version;
 use lazy_static::lazy_static;
-use maud::{html, Markup, DOCTYPE};
+use maud::{html, Markup, PreEscaped, DOCTYPE};
 use std::ops::Deref;
 
 const POST_DATE_FORMAT: &str = "%e %B %Y";
@@ -27,7 +27,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 style nonce="123456789" {
-                    r#"
+                    (PreEscaped(r#"
                     html, body { height: 100% }
                     body { display: flex; flex-direction: column; }
                     pre code { display: block; white-space: pre-wrap; }
@@ -68,7 +68,17 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                         border-top: 0.1rem dotted darkslategrey;
                         margin: 3.0rem 0;
                     }
-                    "#
+                    article a[href^="http"]::after {
+                      content: "";
+                      display: inline-block;
+                      width: 0.6em;
+                      height: 0.6em;
+                      margin-bottom: 0.1em;
+                      margin-left: 0.25em;
+                      background-size: 100%;
+                      background-image: url("/images/link.svg");
+                    }
+                    "#))
                 }
                 script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js" integrity="sha512-2kIcAizYXhIn8TzUvqzEDZNuDZ+aW7yE/+f1HJHXFjQcGNfv1kqzJSTBRBSlOgp6B/KZsz1K0a3ZTqP9dnxioQ==" crossorigin="anonymous" referrerpolicy="no-referrer" {};
             }
