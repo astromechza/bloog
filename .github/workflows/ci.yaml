@@ -28,6 +28,12 @@ jobs:
       # Finally, ensure that no artefacts have been created or changed. This is less necessary now that we use --locked,
       # but there may be other side effects we want to avoid.
       - run: git diff --exit-code
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: ghcr.io/astromechza/bloog:latest
   release:
     runs-on: ubuntu-latest
     # Only run the release job on main refs.
