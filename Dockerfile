@@ -1,4 +1,4 @@
-FROM rust:bookworm AS builder
+FROM rust:1 AS builder
 COPY Cargo.toml Cargo.lock /build/
 COPY src /build/src
 WORKDIR /build
