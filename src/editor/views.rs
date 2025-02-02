@@ -162,7 +162,7 @@ pub(crate) fn list_posts_page(posts: Vec<Post>, htmx_context: Option<HtmxContext
                             tr {
                                 td colspan="5" { "No posts, please create one" }
                             }
-                        } else {
+                        } @else {
                             @for post in posts {
                                 tr {
                                     td {
