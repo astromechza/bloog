@@ -16,7 +16,6 @@ use itertools::Itertools;
 use object_store::local::LocalFileSystem;
 use object_store::path::{Path, PathPart};
 use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::io::Cursor;
@@ -204,9 +203,11 @@ impl Store {
     }
 
     pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<String, Error> {
-        let re = Regex::new(r"^[A-Za-z\-_0-9]{3,100}$")?;
-        if !re.is_match(post.slug.as_str()) {
-            return Err(Error::msg("invalid post slug"));
+        PathPart::parse(post.slug.as_str())?;
+        if !(3..100).contains(&post.slug.len()) {
+            return Err(anyhow!("invalid post slug - too short"));
+        } else if post.slug.split_whitespace().count() != 1 {
+            return Err(anyhow!("invalid post slug - no spaces allowed"));
         }
 
         let html_content = self.convert_html_with_validation(content).await?;
@@ -372,9 +373,11 @@ impl Store {
     }
 
     pub async fn create_image(&self, slug: &str, raw: &[u8]) -> Result<Image, Error> {
-        let re = Regex::new(r"^[A-Za-z\-_0-9]{3,60}$")?;
-        if !re.is_match(slug) {
-            return Err(Error::msg("invalid image slug"));
+        PathPart::parse(slug)?;
+        if !(3..60).contains(&slug.len()) {
+            return Err(anyhow!("invalid image slug - too short"));
+        } else if slug.split_whitespace().count() != 1 {
+            return Err(anyhow!("invalid image slug - no spaces allowed"));
         }
 
         match ImageReader::new(Cursor::new(raw))
