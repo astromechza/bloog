@@ -57,6 +57,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                       line-height: 1.6;
                     }
                     main.container {
+                      max-width: 100rem;
                       margin: 2em auto 0;
                       flex-grow: 1;
                     }
@@ -67,6 +68,10 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                         border: 0;
                         border-top: 0.1rem dotted darkslategrey;
                         margin: 3.0rem 0;
+                    }
+                    article a {
+                      text-decoration-line: underline;
+                      text-decoration-style: dotted;
                     }
                     article a[href^="http"]::after {
                       content: "";
@@ -273,8 +278,8 @@ pub(crate) fn get_post_page(
         post.title.as_str(),
         html! {
             main.container {
-                header.m-b-05 {
-                    h2 {
+                header.row.m-b-05 {
+                    h2.column {
                         a href="/" title="Back to index" {
                             "/ "
                         }
