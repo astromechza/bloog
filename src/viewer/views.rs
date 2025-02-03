@@ -285,7 +285,6 @@ pub(crate) fn get_post_page(
                         }
                         (post.title)
                     }
-                    
                 }
                 section {
                     p.block.m-b-1 {
