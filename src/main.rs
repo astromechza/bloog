@@ -23,10 +23,22 @@ async fn main() {
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
-    #[arg(short, long, env = "BLOOG_STORE_URL", required = true, help = "The arrow/object_store url schema with config options as query args.")]
+    #[arg(
+        short,
+        long,
+        env = "BLOOG_STORE_URL",
+        required = true,
+        help = "The arrow/object_store url schema with config options as query args."
+    )]
     store_url: Url,
 
-    #[arg(short, long, env = "BLOOG_PORT", default_value = "8080", help = "The HTTP port to listen on.")]
+    #[arg(
+        short,
+        long,
+        env = "BLOOG_PORT",
+        default_value = "8080",
+        help = "The HTTP port to listen on."
+    )]
     port: usize,
 
     #[command(subcommand)]
