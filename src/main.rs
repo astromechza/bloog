@@ -32,13 +32,7 @@ struct Args {
     )]
     store_url: Url,
 
-    #[arg(
-        short,
-        long,
-        env = "BLOOG_PORT",
-        default_value = "8080",
-        help = "The HTTP port to listen on."
-    )]
+    #[arg(short, long, env = "BLOOG_PORT", default_value = "8080", help = "The HTTP port to listen on.")]
     port: usize,
 
     #[command(subcommand)]
@@ -57,24 +51,8 @@ async fn main_err() -> Result<(), anyhow::Error> {
     let args = Args::try_parse()?;
     let store = store::Store::from_url(&args.store_url)?;
     match args.command {
-        Command::Viewer => {
-            viewer::run(
-                viewer::Config {
-                    port: args.port as u16,
-                },
-                store,
-            )
-            .await?
-        }
-        Command::Editor => {
-            editor::run(
-                editor::Config {
-                    port: args.port as u16,
-                },
-                store,
-            )
-            .await?
-        }
+        Command::Viewer => viewer::run(viewer::Config { port: args.port as u16 }, store).await?,
+        Command::Editor => editor::run(editor::Config { port: args.port as u16 }, store).await?,
     }
     Ok(())
 }

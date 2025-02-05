@@ -87,10 +87,7 @@ pub(crate) fn render_body_html_or_htmx(
     }
 }
 
-pub(crate) fn internal_error_page(
-    err: anyhow::Error,
-    htmx_context: Option<HtmxContext>,
-) -> Response {
+pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(
         StatusCode::INTERNAL_SERVER_ERROR,
         "Internal Error",
@@ -112,11 +109,7 @@ pub(crate) fn internal_error_page(
     )
 }
 
-pub(crate) fn not_found_page(
-    method: Method,
-    uri: Uri,
-    htmx_context: Option<HtmxContext>,
-) -> Response {
+pub(crate) fn not_found_page(method: Method, uri: Uri, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(
         StatusCode::NOT_FOUND,
         "Not Found",
@@ -252,11 +245,7 @@ Footnote referenced [^1].
     }
 }
 
-pub(crate) fn new_posts_page(
-    post: Option<(&Post, &str)>,
-    error: Option<String>,
-    htmx_context: Option<HtmxContext>,
-) -> Response {
+pub(crate) fn new_posts_page(post: Option<(&Post, &str)>, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(
         StatusCode::OK,
         "New post",
@@ -311,10 +300,7 @@ pub(crate) fn edit_posts_page(
     )
 }
 
-pub(crate) fn debug_objects_page(
-    objects: Vec<ObjectMeta>,
-    htmx_context: Option<HtmxContext>,
-) -> Response {
+pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(
         StatusCode::OK,
         "Debug",
@@ -351,11 +337,7 @@ pub(crate) fn debug_objects_page(
     )
 }
 
-pub(crate) fn list_images_page(
-    images: Vec<Image>,
-    error: Option<Error>,
-    htmx_context: Option<HtmxContext>,
-) -> Response {
+pub(crate) fn list_images_page(images: Vec<Image>, error: Option<Error>, htmx_context: Option<HtmxContext>) -> Response {
     render_body_html_or_htmx(
         StatusCode::OK,
         "Images",
@@ -429,10 +411,7 @@ pub(crate) fn list_images_page(
     )
 }
 
-pub(crate) fn get_image_page(
-    image: impl AsRef<Image>,
-    htmx_context: Option<HtmxContext>,
-) -> Response {
+pub(crate) fn get_image_page(image: impl AsRef<Image>, htmx_context: Option<HtmxContext>) -> Response {
     let original_path = image.as_ref().to_path_part();
     render_body_html_or_htmx(
         StatusCode::OK,

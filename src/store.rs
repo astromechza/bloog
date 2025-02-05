@@ -107,12 +107,8 @@ impl Image {
                 let variant = parts.next();
                 let rem = parts.rev().join(".");
                 match variant {
-                    Some("medium") => Ok(Image::JpgMedium {
-                        slug: Arc::from(rem),
-                    }),
-                    Some("thumb") => Ok(Image::JpgThumbnail {
-                        slug: Arc::from(rem),
-                    }),
+                    Some("medium") => Ok(Image::JpgMedium { slug: Arc::from(rem) }),
+                    Some("thumb") => Ok(Image::JpgThumbnail { slug: Arc::from(rem) }),
                     _ => Err(anyhow!("invalid image variant")),
                 }
             }
@@ -122,18 +118,13 @@ impl Image {
 
     pub fn resolve_full_path(&self, parent: &Path) -> Path {
         let original = self.to_original();
-        parent
-            .child("images")
-            .child(original.to_path_part())
-            .child(self.to_path_part())
+        parent.child("images").child(original.to_path_part()).child(self.to_path_part())
     }
 }
 
 impl Default for Image {
     fn default() -> Self {
-        Image::Webp {
-            slug: Arc::from(""),
-        }
+        Image::Webp { slug: Arc::from("") }
     }
 }
 
@@ -167,10 +158,7 @@ impl Store {
 
     pub fn from_url(url: &Url) -> Result<Self, Error> {
         if url.scheme() != "file" {
-            let opts = url
-                .query_pairs()
-                .map(|i| (i.0.to_string(), i.1.to_string()))
-                .collect_vec();
+            let opts = url.query_pairs().map(|i| (i.0.to_string(), i.1.to_string())).collect_vec();
             let (inner, path) = object_store::parse_url_opts(url, opts)?;
             Ok(Store::new(Box::new(inner), path))
         } else {
@@ -192,12 +180,7 @@ impl Store {
                 ]
                 .into_iter()
             })
-            .chain(
-                self.list_posts()
-                    .await?
-                    .iter()
-                    .map(|p| format!("/posts/{}", p.slug)),
-            )
+            .chain(self.list_posts().await?.iter().map(|p| format!("/posts/{}", p.slug)))
             .collect::<HashSet<String>>();
         conversion::convert(content, valid_paths)
     }
@@ -213,8 +196,7 @@ impl Store {
         let html_content = self.convert_html_with_validation(content).await?;
 
         let post_path = self.sub_path.child("posts").child(post.slug.clone());
-        let post_meta =
-            PostMetadata::V1((post.date, post.title.clone(), IsPublished(post.published)));
+        let post_meta = PostMetadata::V1((post.date, post.title.clone(), IsPublished(post.published)));
         let post_meta_bytes = postcard::to_allocvec(&post_meta)?;
         let post_meta_raw = BASE64_STANDARD_NO_PAD.encode(&post_meta_bytes);
 
@@ -235,11 +217,7 @@ impl Store {
         // write the tags concurrently
         FuturesUnordered::from_iter(post.labels.iter().map(|lbl| {
             let label_path = post_path.child("labels").child(lbl.clone()).to_owned();
-            async move {
-                self.os
-                    .put_opts(&label_path, PutPayload::default(), PutOptions::default())
-                    .await
-            }
+            async move { self.os.put_opts(&label_path, PutPayload::default(), PutOptions::default()).await }
         }))
         .boxed()
         .try_collect::<Vec<_>>()
@@ -255,29 +233,19 @@ impl Store {
                 if let Some((sec, k)) = tail.parts().next_tuple::<(PathPart, PathPart)>() {
                     return ready(
                         (sec.as_ref() == "props" && k.as_ref() != post_meta_raw.as_str())
-                            || (sec.as_ref() == "labels"
-                                && !post.labels.contains(&k.as_ref().to_string())),
+                            || (sec.as_ref() == "labels" && !post.labels.contains(&k.as_ref().to_string())),
                     );
                 }
                 ready(false)
             })
             .boxed();
-        self.os
-            .delete_stream(cleanup_paths)
-            .try_collect::<Vec<Path>>()
-            .await?;
+        self.os.delete_stream(cleanup_paths).try_collect::<Vec<Path>>().await?;
         Ok(html_content)
     }
 
     async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<(), Error> {
         let matched_paths = self.os.list(Some(prefix)).map_ok(|m| m.location).boxed();
-        if self
-            .os
-            .delete_stream(matched_paths)
-            .try_collect::<Vec<Path>>()
-            .await?
-            .is_empty()
-        {
+        if self.os.delete_stream(matched_paths).try_collect::<Vec<Path>>().await?.is_empty() {
             Err(Error::msg("not found"))
         } else {
             Ok(())
@@ -285,20 +253,15 @@ impl Store {
     }
 
     pub async fn delete_post(&self, slug: &str) -> Result<(), Error> {
-        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug))
-            .await
+        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug)).await
     }
 
     async fn create_webp_image(&self, slug: &str, image: DynamicImage) -> Result<Image, Error> {
-        let original_image = Image::Webp {
-            slug: Arc::from(slug),
-        };
+        let original_image = Image::Webp { slug: Arc::from(slug) };
         if self.check_image_exists(&original_image).await? {
             return Err(Error::msg("image slug already exists"));
         }
-        let medium = if image.width() > Self::MEDIUM_VARIANT_WIDTH
-            || image.height() > Self::MEDIUM_VARIANT_HEIGHT
-        {
+        let medium = if image.width() > Self::MEDIUM_VARIANT_WIDTH || image.height() > Self::MEDIUM_VARIANT_HEIGHT {
             image
                 .resize(
                     Self::MEDIUM_VARIANT_WIDTH,
@@ -309,17 +272,12 @@ impl Store {
         } else {
             image.clone().into_rgb8()
         };
-        let thumbnail = image
-            .thumbnail(Self::THUMB_VARIANT_WIDTH, Self::THUMB_VARIANT_HEIGHT)
-            .into_rgb8();
+        let thumbnail = image.thumbnail(Self::THUMB_VARIANT_WIDTH, Self::THUMB_VARIANT_HEIGHT).into_rgb8();
 
         let mut original_data = vec![];
         image.write_with_encoder(WebPEncoder::new_lossless(&mut original_data))?;
         self.os
-            .put(
-                &original_image.resolve_full_path(&self.sub_path),
-                PutPayload::from(original_data),
-            )
+            .put(&original_image.resolve_full_path(&self.sub_path), PutPayload::from(original_data))
             .await?;
         let mut medium_data = vec![];
 
@@ -335,9 +293,7 @@ impl Store {
         thumbnail.write_with_encoder(JpegEncoder::new_with_quality(&mut thumbnail_data, 85))?;
         self.os
             .put(
-                &original_image
-                    .to_thumbnail()
-                    .resolve_full_path(&self.sub_path),
+                &original_image.to_thumbnail().resolve_full_path(&self.sub_path),
                 PutPayload::from(thumbnail_data),
             )
             .await?;
@@ -346,9 +302,7 @@ impl Store {
     }
 
     async fn create_svg_image(&self, slug: &str, raw: &[u8]) -> Result<Image, Error> {
-        let original_image = Image::Svg {
-            slug: Arc::from(slug),
-        };
+        let original_image = Image::Svg { slug: Arc::from(slug) };
         if self.check_image_exists(&original_image).await? {
             return Err(Error::msg("image slug already exists"));
         }
@@ -364,10 +318,7 @@ impl Store {
             None => return Err(Error::msg("empty svg content")),
         }
         self.os
-            .put(
-                &original_image.resolve_full_path(&self.sub_path),
-                PutPayload::from(raw.to_vec()),
-            )
+            .put(&original_image.resolve_full_path(&self.sub_path), PutPayload::from(raw.to_vec()))
             .await?;
         Ok(original_image)
     }
@@ -380,27 +331,15 @@ impl Store {
             return Err(anyhow!("invalid image slug - no spaces allowed"));
         }
 
-        match ImageReader::new(Cursor::new(raw))
-            .with_guessed_format()?
-            .decode()
-        {
-            Ok(dimg) => self
-                .create_webp_image(slug, dimg)
-                .await
-                .context("failed to create webp image"),
-            Err(_) => self
-                .create_svg_image(slug, raw)
-                .await
-                .context("failed to create SVG"),
+        match ImageReader::new(Cursor::new(raw)).with_guessed_format()?.decode() {
+            Ok(dimg) => self.create_webp_image(slug, dimg).await.context("failed to create webp image"),
+            Err(_) => self.create_svg_image(slug, raw).await.context("failed to create SVG"),
         }
     }
 
     pub async fn delete_image(&self, img: impl AsRef<Image>) -> Result<(), Error> {
         let candidate_paths = vec![
-            Ok(img
-                .as_ref()
-                .to_thumbnail()
-                .resolve_full_path(&self.sub_path)),
+            Ok(img.as_ref().to_thumbnail().resolve_full_path(&self.sub_path)),
             Ok(img.as_ref().to_medium().resolve_full_path(&self.sub_path)),
             Ok(img.as_ref().to_original().resolve_full_path(&self.sub_path)),
         ];
@@ -422,11 +361,7 @@ impl Store {
         i.into_iter()
             .filter_map(|p| {
                 let mut iter = p.parts();
-                if iter
-                    .nth(offset + 2)
-                    .filter(|pp| pp.as_ref() == "labels")
-                    .is_some()
-                {
+                if iter.nth(offset + 2).filter(|pp| pp.as_ref() == "labels").is_some() {
                     iter.next().map(|pp| pp.as_ref().to_string())
                 } else {
                     None
@@ -438,12 +373,7 @@ impl Store {
 
     fn props_part_from_paths(mut paths: Iter<&Path>, offset: usize) -> Option<PostMetadata> {
         paths
-            .find(|path| {
-                path.parts()
-                    .nth(offset + 2)
-                    .filter(|pp| pp.as_ref() == "props")
-                    .is_some()
-            })
+            .find(|path| path.parts().nth(offset + 2).filter(|pp| pp.as_ref() == "props").is_some())
             .and_then(|path| path.parts().nth(offset + 3))
             .and_then(|p| BASE64_STANDARD_NO_PAD.decode(p.as_ref().as_bytes()).ok())
             .and_then(|b| postcard::from_bytes(&b).ok())
@@ -567,10 +497,7 @@ impl Store {
 
 impl Default for Store {
     fn default() -> Self {
-        Self::new(
-            Box::new(object_store::memory::InMemory::new()),
-            Path::default(),
-        )
+        Self::new(Box::new(object_store::memory::InMemory::new()), Path::default())
     }
 }
 
@@ -644,14 +571,7 @@ mod tests {
     async fn test_store_images_empty() -> Result<(), Error> {
         let store = Store::default();
         assert!(store.list_images().await?.is_empty());
-        assert_eq!(
-            store
-                .get_image_raw(Image::Webp {
-                    slug: Arc::from("fizz")
-                })
-                .await?,
-            None
-        );
+        assert_eq!(store.get_image_raw(Image::Webp { slug: Arc::from("fizz") }).await?, None);
         Ok(())
     }
 
@@ -709,14 +629,8 @@ mod tests {
 
         println!("{:#?}", store.list_object_meta().await?);
 
-        let (post, content) = store
-            .get_post_raw("my-first-post")
-            .await?
-            .unwrap_or_default();
-        assert_eq!(
-            post.date,
-            NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?
-        );
+        let (post, content) = store.get_post_raw("my-first-post").await?.unwrap_or_default();
+        assert_eq!(post.date, NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?);
         assert_eq!(post.slug, "my-first-post");
         assert_eq!(post.title, "My first post");
         assert!(post.published);
@@ -736,14 +650,8 @@ mod tests {
             )
             .await?;
 
-        let (post, content) = store
-            .get_post_raw("my-first-post")
-            .await?
-            .unwrap_or_default();
-        assert_eq!(
-            post.date,
-            NaiveDate::from_ymd_opt(2020, 1, 2).ok_or(anyhow!("invalid date"))?
-        );
+        let (post, content) = store.get_post_raw("my-first-post").await?.unwrap_or_default();
+        assert_eq!(post.date, NaiveDate::from_ymd_opt(2020, 1, 2).ok_or(anyhow!("invalid date"))?);
         assert_eq!(post.slug, "my-first-post");
         assert_eq!(post.title, "My updated first post");
         assert!(!post.published);
