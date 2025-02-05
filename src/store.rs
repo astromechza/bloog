@@ -238,7 +238,8 @@ impl Store {
                 }
                 ready(false)
             })
-            .try_collect::<Vec<Path>>().await?;
+            .try_collect::<Vec<Path>>()
+            .await?;
         for p in cleanup_paths {
             self.os.delete(&p).await?;
         }
