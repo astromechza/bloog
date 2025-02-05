@@ -52,7 +52,7 @@ jobs:
             echo "release already exists"
           else
             gh release create "${version}" -t "${version}" --generate-notes
-            echo "version=${version}\n" > $GITHUB_OUTPUT
+            echo "version=${version}" > $GITHUB_OUTPUT
           fi
       - uses: docker/setup-buildx-action@v3
         if: ${{ steps.set-version.outputs.version }}
