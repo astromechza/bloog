@@ -238,16 +238,21 @@ impl Store {
                 }
                 ready(false)
             })
-            .boxed();
-        self.os.delete_stream(cleanup_paths).try_collect::<Vec<Path>>().await?;
+            .try_collect::<Vec<Path>>().await?;
+        for p in cleanup_paths {
+            self.os.delete(&p).await?;
+        }
         Ok(html_content)
     }
 
     async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<(), Error> {
-        let matched_paths = self.os.list(Some(prefix)).map_ok(|m| m.location).boxed();
-        if self.os.delete_stream(matched_paths).try_collect::<Vec<Path>>().await?.is_empty() {
+        let paths = self.os.list(Some(prefix)).map_ok(|m| m.location).try_collect::<Vec<Path>>().await?;
+        if paths.is_empty() {
             Err(Error::msg("not found"))
         } else {
+            for p in paths {
+                self.os.delete(&p).await?;
+            }
             Ok(())
         }
     }
