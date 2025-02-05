@@ -1,71 +1,38 @@
 # bloog (new blog)
 
-The idea is a stateless blog binary that pulls all content from an object storage bucket. 
+**NOTE**: while open-source, this blog binary is not 
 
-## bloog-editor
+This is a rewrite of my previous [binary-blog](https://github.com/astromechza/binary-blog), this time, optimised for writing!
 
-Point it at an arrow-rs/object storage source (s3-style object store or file system). In general this is just a system that supports list, put, delete, etc.
+The previous iteration, embedded the posts and images into the binary itself, which was fun and allowed for some cool CI pipeline things, but it meant that writing new content was incredibly tedious and was stuck on slow Rust builds, slow github runners, and generally such slow iteration that it was easy to context switch away while writing.
 
-It has basically 3 pages:
+This time, all content and images are stored in an object storage bucket, the binary for the blog changes very infrequently, and the binary hosts a mini markdown CMS system for authoring posts.
 
-GET / - the landing page, it has a list of posts, followed by a list of image thumbnails
-GET /posts/{id}/edit - displays a post in editing mode with [check], [save] and [(un)publish] buttons
-	[check] is the same as [save]--dry-run and returns a set of errors from the post
-	[publish] is the same as [save]
-	the content is writtein in restructured text
-POST /posts/{id}/check
-POST /posts/{id}/save
-GET /images/{id} - displays an image
-POST /images/ - uploads an image, strips any metadata, stores the original, stores an 1000x1000 max size, stores a 150px thumbnail
-DELETE /images/{id} - deletes an image
+Features:
 
-## bloog-server
+- Posts stored as markdown in object storage.
+- Images stored in object storage and automatically resized and thumb-nailed on upload. SVGs are also supported.
+- Automatic broken link detection.
 
-Point it at the same object storage source. Load the parquet file.
+```
+Usage: bloog [OPTIONS] --store-url <STORE_URL> <COMMAND>
 
-GET /
-GET /posts/
-GET /posts/{id}
-GET /images/{id}
+Commands:
+  viewer  Launch the read-only viewer process
+  editor  Launch the read-write editor process
+  help    Print this message or the help of the given subcommand(s)
 
-## What's in the posts DB...
-What do we need?
+Options:
+  -s, --store-url <STORE_URL>  The arrow/object_store url schema with config options as query args. [env: BLOOG_STORE_URL=]
+  -p, --port <PORT>            The HTTP port to listen on. [env: BLOOG_PORT=] [default: 8080]
+  -h, --help                   Print help
+  -V, --version                Print version
+```
 
-- date
-- title
-- content_type
-- content
-- labels
-- image_ids
-- bsky_post_url
+Running against my Backblaze B2 bucket:
 
-THe duckdb thingy for rust doesn't seem very fully featured... quite disappointing...
-
-## Could we just do this on object store too?
-
-operations to supporT:
-
-LIST and return the date, title, and labels of all posts.
-We can do this one by just listing all objects under /posts/ and parsing them as we know how to do
-
-/posts/<unique slug>/props/<base64-encoded props>
-/posts/<unique slug>/content/raw
-/posts/<unique slug>/labels/x/true
-/posts/<unique slug>/labels/y/true
-
-
-So to show the index page:
-
-- list all objects, grab the posts, decode the props, annotate with labels, build a vec<posts> representation, sort, render.
-
-To show a particular post by slug:
-
-- list all objects under the slug, decode the props, annotate with labels.
-- make a second request to grab the document content itself
-
-To show all posts with a particular label, search by delimeter labels/x/ and grab the slugs from the common prefixes list.
-
-
-
-
-
+```
+export BLOOG_STORE_URL='--store-url s3://<bucket>?access_key_id=<key id>&secret_access_key=<key>&endpoint=https://s3.us-east-005.backblazeb2.com'
+bloog --port 8081 editor
+bloog --port 8080 viewer
+```

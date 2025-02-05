@@ -12,7 +12,7 @@ futures = { version = "0.3.31" }
 image = { version = "0.25.5", features = ["jpeg", "png", "webp"] }
 itertools = { version = "0.14.0" }
 maud = { version = "0.27.0", features = ["axum"] }
-object_store = { version = "0.11.2" }
+object_store = { version = "0.11.2" , features = ["cloud", "http", "aws"]}
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
 url = { version = "2.5.4" }
 serde = { version = "1.0.217", features = ["derive"] }

@@ -1,0 +1,33 @@
+apiVersion: score.dev/v1b1
+metadata:
+  name: bloog-viewer
+containers:
+  main:
+    image: .
+    args:
+      - viewer
+    variables:
+      BLOOG_STORE_URL: ${resources.env.BLOOG_STORE_URL}
+    resources:
+      requests:
+        cpu: 500m
+        memory: 128M
+    readinessProbe:
+      httpGet:
+        port: 8080
+        path: /
+service:
+  ports:
+    web:
+      port: 8080
+resources:
+  env:
+    type: environment
+  dns:
+    type: dns
+  route:
+    type: route
+    params:
+      host: ${resources.dns.host}
+      path: /
+      port: web
