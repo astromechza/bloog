@@ -278,7 +278,6 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Opti
                         }
                         (post.title)
                     }
-                    
                 }
                 section {
                     p.block.m-b-1 {
