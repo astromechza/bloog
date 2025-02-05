@@ -18,3 +18,8 @@ target/
 
 # test runs
 /test/
+
+# score
+.score-compose/
+score.yaml
+compose.yaml

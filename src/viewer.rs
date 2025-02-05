@@ -94,21 +94,13 @@ async fn get_image_handler(
             .get("Accept")
             .is_some_and(|hv| hv.to_str().is_ok_and(|t| t.contains("text/html")));
     if can_html {
-        if !store
-            .check_image_exists(&img)
-            .await
-            .map_resp_err(&htmx_context)?
-        {
+        if !store.check_image_exists(&img).await.map_resp_err(&htmx_context)? {
             return Ok(views::not_found_page(uri, htmx_context).into_response());
         }
         return Ok(views::get_image_page(img.to_original(), htmx_context).into_response());
     }
 
-    if let Some(image) = store
-        .get_image_raw(&img)
-        .await
-        .map_resp_err(&htmx_context)?
-    {
+    if let Some(image) = store.get_image_raw(&img).await.map_resp_err(&htmx_context)? {
         let mut hm = HeaderMap::new();
         hm.insert("Content-Type", img.to_content_type());
         Ok((StatusCode::OK, hm, image).into_response())
@@ -130,12 +122,7 @@ async fn index_handler(
     posts.reverse();
     let group_map = posts.iter().into_group_map_by(|p| p.date.year());
     let year_groups = group_map.iter().sorted().rev().collect_vec();
-    Ok(views::get_index_page(
-        label_filter.map(|s| s.to_string()),
-        year_groups,
-        htmx_context,
-    )
-    .into_response())
+    Ok(views::get_index_page(label_filter.map(|s| s.to_string()), year_groups, htmx_context).into_response())
 }
 
 async fn get_post_handler(
@@ -145,13 +132,8 @@ async fn get_post_handler(
     Path(slug): Path<String>,
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
-    if let Some((post, content)) = store
-        .get_post_raw(&slug)
-        .await
-        .map_resp_err(&htmx_context)?
-    {
-        let content_html =
-            convert(content.as_str(), HashSet::default()).map_resp_err(&htmx_context)?;
+    if let Some((post, content)) = store.get_post_raw(&slug).await.map_resp_err(&htmx_context)? {
+        let content_html = convert(content.as_str(), HashSet::default()).map_resp_err(&htmx_context)?;
         Ok(views::get_post_page(post, PreEscaped(content_html), htmx_context).into_response())
     } else {
         Ok(views::not_found_page(uri, htmx_context).into_response())

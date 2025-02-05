@@ -109,10 +109,7 @@ lazy_static! {
     };
 }
 
-pub(crate) fn internal_error_page(
-    err: anyhow::Error,
-    htmx_context: Option<HtmxContext>,
-) -> impl IntoResponse {
+pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::INTERNAL_SERVER_ERROR,
         "Internal Error",
@@ -268,11 +265,7 @@ pub(crate) fn get_index_page(
     ).into_response()
 }
 
-pub(crate) fn get_post_page(
-    post: Post,
-    content_html: Markup,
-    htmx_context: Option<HtmxContext>,
-) -> impl IntoResponse {
+pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::OK,
         post.title.as_str(),

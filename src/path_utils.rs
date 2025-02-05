@@ -17,37 +17,13 @@ mod tests {
     #[test]
     fn test_path_tail() {
         assert_eq!(path_tail(&Path::from(""), &Path::from("")).to_string(), "");
-        assert_eq!(
-            path_tail(&Path::from("x/y/z"), &Path::from("")).to_string(),
-            "x/y/z"
-        );
-        assert_eq!(
-            path_tail(&Path::from("x/y/z"), &Path::from("x")).to_string(),
-            "y/z"
-        );
-        assert_eq!(
-            path_tail(&Path::from("x/y/z"), &Path::from("x/")).to_string(),
-            "y/z"
-        );
-        assert_eq!(
-            path_tail(&Path::from("x/y/z"), &Path::from("x/y")).to_string(),
-            "z"
-        );
-        assert_eq!(
-            path_tail(&Path::from("x/y/z"), &Path::from("x/y/")).to_string(),
-            "z"
-        );
-        assert_eq!(
-            path_tail(&Path::from("x/y/z"), &Path::from("x/y/")).to_string(),
-            "z"
-        );
-        assert_eq!(
-            path_tail(&Path::from("x/y/z"), &Path::from("x/y/z")).to_string(),
-            ""
-        );
-        assert_eq!(
-            path_tail(&Path::from("x/y/z"), &Path::from("a/b/c")).to_string(),
-            "x/y/z"
-        );
+        assert_eq!(path_tail(&Path::from("x/y/z"), &Path::from("")).to_string(), "x/y/z");
+        assert_eq!(path_tail(&Path::from("x/y/z"), &Path::from("x")).to_string(), "y/z");
+        assert_eq!(path_tail(&Path::from("x/y/z"), &Path::from("x/")).to_string(), "y/z");
+        assert_eq!(path_tail(&Path::from("x/y/z"), &Path::from("x/y")).to_string(), "z");
+        assert_eq!(path_tail(&Path::from("x/y/z"), &Path::from("x/y/")).to_string(), "z");
+        assert_eq!(path_tail(&Path::from("x/y/z"), &Path::from("x/y/")).to_string(), "z");
+        assert_eq!(path_tail(&Path::from("x/y/z"), &Path::from("x/y/z")).to_string(), "");
+        assert_eq!(path_tail(&Path::from("x/y/z"), &Path::from("a/b/c")).to_string(), "x/y/z");
     }
 }

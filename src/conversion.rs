@@ -7,10 +7,7 @@ struct BrokenLinkTracker {
 }
 
 impl<'input> BrokenLinkCallback<'input> for BrokenLinkTracker {
-    fn handle_broken_link(
-        &mut self,
-        link: BrokenLink<'input>,
-    ) -> Option<(CowStr<'input>, CowStr<'input>)> {
+    fn handle_broken_link(&mut self, link: BrokenLink<'input>) -> Option<(CowStr<'input>, CowStr<'input>)> {
         if let Ok(mut locked) = self.tracker.lock() {
             locked.replace(format!("bad link '{}'", link.reference));
         }
