@@ -19,7 +19,5 @@ target/
 # test runs
 /test/
 
-# score
-.score-compose/
-score.yaml
-compose.yaml
+# ignore pre configured run scripts
+.run/
