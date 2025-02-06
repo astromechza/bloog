@@ -89,7 +89,9 @@ async fn home_handler(headers: HeaderMap) -> Result<Response, ResponseError> {
 
 async fn posts_handler(headers: HeaderMap, State(store): State<Arc<Store>>) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
-    let posts = store.list_posts().await.map_resp_err(&htmx_context)?;
+    let mut posts = store.list_posts().await.map_resp_err(&htmx_context)?;
+    posts.sort();
+    posts.reverse();
     Ok(views::list_posts_page(posts, htmx_context))
 }
 
