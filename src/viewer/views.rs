@@ -10,7 +10,7 @@ use lazy_static::lazy_static;
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 use std::ops::Deref;
 
-const POST_DATE_FORMAT: &str = "%e %B %Y";
+const POST_DATE_FORMAT: &str = "%e %B";
 const RFC3339_DATE_FORMAT: &str = "%Y-%m-%dT00:00:00Z";
 
 fn render_body_html(title: &str, body: Markup) -> Markup {
