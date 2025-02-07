@@ -32,6 +32,8 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/favicon.ico", get(get_favicon_ico_handler))
         .route("/posts/{slug}", get(get_post_handler))
         .route("/images/{slug}", get(get_image_handler))
+        .route("/livez", get(livez_handler))
+        .route("/readyz", get(readyz_handler))
         .fallback(not_found_handler)
         .with_state(Arc::new(store));
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
@@ -144,4 +146,13 @@ async fn get_favicon_ico_handler() -> Response {
     let mut hm = HeaderMap::new();
     hm.insert("Location", HeaderValue::from_static("/images/favicon.svg"));
     (StatusCode::TEMPORARY_REDIRECT, hm).into_response()
+}
+
+async fn livez_handler() -> Response {
+    StatusCode::NO_CONTENT.into_response()
+}
+
+async fn readyz_handler(State(store): State<Arc<Store>>) -> Result<Response, ResponseError> {
+    store.readyz().await.map_resp_err(&None)?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }

@@ -165,7 +165,9 @@ pub(crate) fn list_posts_page(posts: Vec<Post>, htmx_context: Option<HtmxContext
                                     }
                                     td { (post.slug) }
                                     td { (post.title) }
-                                    td { (post.published) }
+                                    td {
+                                        @if post.published { "Yes" } @else { strong { "No" } }
+                                    }
                                     td { (post.labels.join(", ")) }
                                 }
                             }

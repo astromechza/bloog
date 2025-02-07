@@ -14,7 +14,7 @@ use image::codecs::webp::WebPEncoder;
 use image::{DynamicImage, ImageReader};
 use itertools::Itertools;
 use object_store::local::LocalFileSystem;
-use object_store::path::{Path, PathPart};
+use object_store::path::{Path, PathPart, DELIMITER};
 use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -168,6 +168,15 @@ impl Store {
         }
     }
 
+    /// readyz checks whether we have read access to the underlying storage.
+    pub async fn readyz(&self) -> Result<(), Error> {
+        self.os
+            .list(Some(&self.sub_path.child("not-exist")))
+            .try_fold(0, |acc, _| async move { Ok(acc + 1) })
+            .await?;
+        Ok(())
+    }
+
     pub async fn convert_html_with_validation(&self, content: &str) -> Result<String, Error> {
         let valid_paths = self
             .list_images()
@@ -246,20 +255,22 @@ impl Store {
         Ok(html_content)
     }
 
-    async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<(), Error> {
+    async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<usize, Error> {
         let paths = self.os.list(Some(prefix)).map_ok(|m| m.location).try_collect::<Vec<Path>>().await?;
         if paths.is_empty() {
             Err(Error::msg("not found"))
         } else {
-            for p in paths {
-                self.os.delete(&p).await?;
+            for p in &paths {
+                self.os.delete(p).await?;
             }
-            Ok(())
+            Ok(paths.len())
         }
     }
 
     pub async fn delete_post(&self, slug: &str) -> Result<(), Error> {
-        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug)).await
+        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug))
+            .await
+            .map(|_| ())
     }
 
     async fn create_webp_image(&self, slug: &str, image: DynamicImage) -> Result<Image, Error> {
@@ -344,23 +355,11 @@ impl Store {
     }
 
     pub async fn delete_image(&self, img: impl AsRef<Image>) -> Result<(), Error> {
-        let candidate_paths = vec![
-            Ok(img.as_ref().to_thumbnail().resolve_full_path(&self.sub_path)),
-            Ok(img.as_ref().to_medium().resolve_full_path(&self.sub_path)),
-            Ok(img.as_ref().to_original().resolve_full_path(&self.sub_path)),
-        ];
-        if self
-            .os
-            .delete_stream(futures::stream::iter(candidate_paths).boxed())
-            .filter(|r| ready(!matches!(r, Err(object_store::Error::NotFound { .. }))))
-            .try_collect::<Vec<Path>>()
-            .await?
-            .is_empty()
-        {
-            Err(Error::msg("not found"))
-        } else {
-            Ok(())
-        }
+        let prefix_path = &self.sub_path.child("images").child(img.as_ref().to_original().to_path_part());
+        self.delete_paths_by_prefix(prefix_path).await.and_then(|i| match i {
+            0 => Err(Error::msg("not found")),
+            _ => Ok(()),
+        })
     }
 
     fn labels_from_paths(i: Iter<&Path>, offset: usize) -> Vec<String> {
@@ -460,12 +459,17 @@ impl Store {
     pub async fn list_images(&self) -> Result<Vec<Image>, Error> {
         Ok(self
             .os
-            .list_with_delimiter(Some(&self.sub_path.child("images")))
+            .list(Some(&self.sub_path.child("images")))
+            .try_collect::<Vec<ObjectMeta>>()
             .await?
-            .common_prefixes
             .iter()
-            .map(|om| Image::try_from_path_part(om.parts().last().unwrap_or_default()))
-            .filter_map(Result::ok)
+            .sorted_by(|a, b| a.last_modified.cmp(&b.last_modified).reverse())
+            .filter_map(|meta| {
+                let parts = meta.location.as_ref().rsplit(DELIMITER).next_tuple::<(&str, &str)>();
+                parts
+                    .filter(|(a, b)| a.eq(b))
+                    .and_then(|(_, b)| Image::try_from_path_part(PathPart::from(b)).ok())
+            })
             .collect_vec())
     }
 
@@ -665,6 +669,63 @@ mod tests {
         assert_eq!(content, "my-updated-content".to_string());
         assert_eq!(store.list_object_meta().await?.len(), 4);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_convert_empty() -> Result<(), Error> {
+        let store = Store::default();
+        let content = store.convert_html_with_validation("").await?;
+        assert_eq!(content, "");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_convert_external_links() -> Result<(), Error> {
+        let store = Store::default();
+        let content = store
+            .convert_html_with_validation(
+                r"
+[external](http://example.com)
+[external](https://example.com)
+![external](https://example.com)
+        ",
+            )
+            .await?;
+        assert_eq!(
+            content,
+            r##"<p><a href="http://example.com">external</a>
+<a href="https://example.com">external</a>
+<img src="https://example.com" alt="external" /></p>
+"##
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_convert_internal_links() -> Result<(), Error> {
+        let store = Store::default();
+        store
+            .upsert_post(
+                &Post {
+                    date: NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?,
+                    slug: "my-first-post".to_string(),
+                    title: "My first post".to_string(),
+                    ..Post::default()
+                },
+                "my-content",
+            )
+            .await?;
+
+        let content = store.convert_html_with_validation("[internal](/posts/my-first-post)").await?;
+        assert_eq!(content, "<p><a href=\"/posts/my-first-post\">internal</a></p>\n");
+        assert_eq!(
+            store
+                .convert_html_with_validation("[internal](/posts/does-not-exist)")
+                .await
+                .unwrap_or_else(|e| e.to_string()),
+            "link '/posts/does-not-exist' references a relative path which does not exist",
+        );
         Ok(())
     }
 }

@@ -10,7 +10,6 @@ use lazy_static::lazy_static;
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 use std::ops::Deref;
 
-const POST_DATE_FORMAT: &str = "%e %B";
 const RFC3339_DATE_FORMAT: &str = "%Y-%m-%dT00:00:00Z";
 
 fn render_body_html(title: &str, body: Markup) -> Markup {
@@ -80,6 +79,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                       height: 0.6em;
                       margin-bottom: 0.1em;
                       margin-left: 0.25em;
+                      margin-right: 0.1em;
                       background-size: 100%;
                       background-image: url("/images/link.svg");
                     }
@@ -236,7 +236,7 @@ pub(crate) fn get_index_page(
                                 @for p in g {
                                     li {
                                         a href={ "/posts/" (&p.slug) } {
-                                            time datetime=(&p.date.format(RFC3339_DATE_FORMAT).to_string()) { (&p.date.format(POST_DATE_FORMAT).to_string()) }
+                                            time datetime=(&p.date.format(RFC3339_DATE_FORMAT).to_string()) { (&p.date.format("%e %B").to_string()) }
                                             ": " (&p.title)
                                         }
                                         @if !p.labels.is_empty() {
@@ -278,10 +278,11 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Opti
                         }
                         (post.title)
                     }
+
                 }
                 section {
                     p.block.m-b-1 {
-                        time datetime=(post.date.format(RFC3339_DATE_FORMAT).to_string()) { (post.date.format(POST_DATE_FORMAT).to_string()) }
+                        time datetime=(post.date.format(RFC3339_DATE_FORMAT).to_string()) { (post.date.format("%e %B %Y").to_string()) }
                         @if !post.labels.is_empty() {
                             @for l in post.labels {
                                 " | "
@@ -299,7 +300,8 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Opti
         },
         render_body_html,
         htmx_context,
-    ).into_response()
+    )
+    .into_response()
 }
 
 pub(crate) fn get_image_page(image: Image, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
