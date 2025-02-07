@@ -255,20 +255,20 @@ impl Store {
         Ok(html_content)
     }
 
-    async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<(), Error> {
+    async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<usize, Error> {
         let paths = self.os.list(Some(prefix)).map_ok(|m| m.location).try_collect::<Vec<Path>>().await?;
         if paths.is_empty() {
             Err(Error::msg("not found"))
         } else {
-            for p in paths {
+            for p in &paths {
                 self.os.delete(&p).await?;
             }
-            Ok(())
+            Ok(paths.len())
         }
     }
 
     pub async fn delete_post(&self, slug: &str) -> Result<(), Error> {
-        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug)).await
+        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug)).await.map(|_| ())
     }
 
     async fn create_webp_image(&self, slug: &str, image: DynamicImage) -> Result<Image, Error> {
@@ -353,23 +353,12 @@ impl Store {
     }
 
     pub async fn delete_image(&self, img: impl AsRef<Image>) -> Result<(), Error> {
-        let candidate_paths = vec![
-            Ok(img.as_ref().to_thumbnail().resolve_full_path(&self.sub_path)),
-            Ok(img.as_ref().to_medium().resolve_full_path(&self.sub_path)),
-            Ok(img.as_ref().to_original().resolve_full_path(&self.sub_path)),
-        ];
-        if self
-            .os
-            .delete_stream(futures::stream::iter(candidate_paths).boxed())
-            .filter(|r| ready(!matches!(r, Err(object_store::Error::NotFound { .. }))))
-            .try_collect::<Vec<Path>>()
-            .await?
-            .is_empty()
-        {
-            Err(Error::msg("not found"))
-        } else {
-            Ok(())
-        }
+        let prefix_path = &self.sub_path.child("images").child(img.as_ref().to_original().to_path_part());
+        self.delete_paths_by_prefix(prefix_path).await
+            .and_then(|i| match i {
+                0 => Err(Error::msg("not found")),
+                _ => Ok(()),
+            })
     }
 
     fn labels_from_paths(i: Iter<&Path>, offset: usize) -> Vec<String> {
