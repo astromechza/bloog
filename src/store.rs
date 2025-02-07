@@ -261,14 +261,16 @@ impl Store {
             Err(Error::msg("not found"))
         } else {
             for p in &paths {
-                self.os.delete(&p).await?;
+                self.os.delete(p).await?;
             }
             Ok(paths.len())
         }
     }
 
     pub async fn delete_post(&self, slug: &str) -> Result<(), Error> {
-        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug)).await.map(|_| ())
+        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug))
+            .await
+            .map(|_| ())
     }
 
     async fn create_webp_image(&self, slug: &str, image: DynamicImage) -> Result<Image, Error> {
@@ -354,11 +356,10 @@ impl Store {
 
     pub async fn delete_image(&self, img: impl AsRef<Image>) -> Result<(), Error> {
         let prefix_path = &self.sub_path.child("images").child(img.as_ref().to_original().to_path_part());
-        self.delete_paths_by_prefix(prefix_path).await
-            .and_then(|i| match i {
-                0 => Err(Error::msg("not found")),
-                _ => Ok(()),
-            })
+        self.delete_paths_by_prefix(prefix_path).await.and_then(|i| match i {
+            0 => Err(Error::msg("not found")),
+            _ => Ok(()),
+        })
     }
 
     fn labels_from_paths(i: Iter<&Path>, offset: usize) -> Vec<String> {
