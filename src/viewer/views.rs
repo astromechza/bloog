@@ -79,6 +79,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                       height: 0.6em;
                       margin-bottom: 0.1em;
                       margin-left: 0.25em;
+                      margin-right: 0.1em;
                       background-size: 100%;
                       background-image: url("/images/link.svg");
                     }

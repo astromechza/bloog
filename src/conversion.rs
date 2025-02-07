@@ -39,7 +39,7 @@ pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<String, an
                 Event::Start(Tag::Link { dest_url, .. }) => Some(("link", dest_url)),
                 _ => None,
             }
-            .filter(|(_, dl)| dl.starts_with('/') && !valid_links.contains(&dl.to_string()))
+            .filter(|(_, dl)| !dl.starts_with("http://") && !dl.starts_with("https://") && !valid_links.contains(&dl.to_string()))
             {
                 if let Ok(mut locked) = error_capture.lock() {
                     locked.replace(format!(
