@@ -40,6 +40,8 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/posts/{id}", post(submit_edit_post_handler))
         .route("/posts/{id}", delete(submit_delete_post_handler))
         .route("/debug", get(debug_handler))
+        .route("/livez", get(livez_handler))
+        .route("/readyz", get(readyz_handler))
         .fallback(not_found_handler)
         .layer(DefaultBodyLimit::disable())
         .with_state(Arc::new(store));
@@ -306,4 +308,13 @@ async fn submit_delete_image_handler(
     let img = Image::try_from_path_part(PathPart::from(slug)).unwrap_or_default();
     store.delete_image(&img).await.map_resp_err(&htmx_context)?;
     redirect_response("/images", htmx_context)
+}
+
+async fn livez_handler() -> Response {
+    StatusCode::NO_CONTENT.into_response()
+}
+
+async fn readyz_handler(State(store): State<Arc<Store>>) -> Result<Response, ResponseError> {
+    store.readyz().await.map_resp_err(&None)?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }

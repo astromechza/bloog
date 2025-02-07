@@ -168,6 +168,15 @@ impl Store {
         }
     }
 
+    /// readyz checks whether we have read access to the underlying storage.
+    pub async fn readyz(&self) -> Result<(), Error> {
+        self.os
+            .list(Some(&self.sub_path.child("not-exist")))
+            .try_fold(0, |acc, _| async move { Ok(acc + 1) })
+            .await?;
+        Ok(())
+    }
+
     pub async fn convert_html_with_validation(&self, content: &str) -> Result<String, Error> {
         let valid_paths = self
             .list_images()
