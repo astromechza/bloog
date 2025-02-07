@@ -671,4 +671,61 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_convert_empty() -> Result<(), Error> {
+        let store = Store::default();
+        let content = store.convert_html_with_validation("").await?;
+        assert_eq!(content, "");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_convert_external_links() -> Result<(), Error> {
+        let store = Store::default();
+        let content = store
+            .convert_html_with_validation(
+                r"
+[external](http://example.com)
+[external](https://example.com)
+![external](https://example.com)
+        ",
+            )
+            .await?;
+        assert_eq!(
+            content,
+            r##"<p><a href="http://example.com">external</a>
+<a href="https://example.com">external</a>
+<img src="https://example.com" alt="external" /></p>
+"##
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_convert_internal_links() -> Result<(), Error> {
+        let store = Store::default();
+        store
+            .upsert_post(
+                &Post {
+                    date: NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?,
+                    slug: "my-first-post".to_string(),
+                    title: "My first post".to_string(),
+                    ..Post::default()
+                },
+                "my-content",
+            )
+            .await?;
+
+        let content = store.convert_html_with_validation("[internal](/posts/my-first-post)").await?;
+        assert_eq!(content, "<p><a href=\"/posts/my-first-post\">internal</a></p>\n");
+        assert_eq!(
+            store
+                .convert_html_with_validation("[internal](/posts/does-not-exist)")
+                .await
+                .unwrap_or_else(|e| e.to_string()),
+            "link '/posts/does-not-exist' references a relative path which does not exist",
+        );
+        Ok(())
+    }
 }
