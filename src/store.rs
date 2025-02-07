@@ -14,7 +14,7 @@ use image::codecs::webp::WebPEncoder;
 use image::{DynamicImage, ImageReader};
 use itertools::Itertools;
 use object_store::local::LocalFileSystem;
-use object_store::path::{Path, PathPart};
+use object_store::path::{Path, PathPart, DELIMITER};
 use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -460,12 +460,17 @@ impl Store {
     pub async fn list_images(&self) -> Result<Vec<Image>, Error> {
         Ok(self
             .os
-            .list_with_delimiter(Some(&self.sub_path.child("images")))
+            .list(Some(&self.sub_path.child("images")))
+            .try_collect::<Vec<ObjectMeta>>()
             .await?
-            .common_prefixes
             .iter()
-            .map(|om| Image::try_from_path_part(om.parts().last().unwrap_or_default()))
-            .filter_map(Result::ok)
+            .sorted_by(|a, b| a.last_modified.cmp(&b.last_modified).reverse())
+            .filter_map(|meta| {
+                let parts = meta.location.as_ref().rsplit(DELIMITER).next_tuple::<(&str, &str)>();
+                parts
+                    .filter(|(a, b)| a.eq(b))
+                    .and_then(|(_, b)| Image::try_from_path_part(PathPart::from(b)).ok())
+            })
             .collect_vec())
     }
 
