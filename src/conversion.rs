@@ -209,7 +209,11 @@ mod tests {
                 HashSet::new()
             )
             .unwrap_or_else(|e| e.to_string()),
-            "<h1>1 fine</h1>\n<h1>2 also fine</h1>\n<h2>2.1 indented</h2>\n<h1>3 unindented</h1>\n",
+            r##"<h1><small>1.</small> fine</h1>
+<h1><small>2.</small> also fine</h1>
+<h2><small>2.1</small> indented</h2>
+<h1><small>3.</small> unindented</h1>
+"##,
         )
     }
 }
