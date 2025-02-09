@@ -164,6 +164,7 @@ impl HeadingChecker {
                                 small id=(valid_id) {
                                     (pref)
                                 }
+                                " "
                                 (s)
                             }
                         }
@@ -234,10 +235,10 @@ mod tests {
                 HashSet::new()
             )
             .unwrap_or_else(|e| e.to_string()),
-            r##"<h1><a class="hlink" href="#fine"><small id="fine">1.</small>fine</a></h1>
-<h1><a class="hlink" href="#also-fine"><small id="also-fine">2.</small>also fine</a></h1>
-<h2><a class="hlink" href="#indented"><small id="indented">2.1</small>indented</a></h2>
-<h1><a class="hlink" href="#unindented"><small id="unindented">3.</small>unindented</a></h1>
+            r##"<h1><a class="hlink" href="#fine"><small id="fine">1.</small> fine</a></h1>
+<h1><a class="hlink" href="#also-fine"><small id="also-fine">2.</small> also fine</a></h1>
+<h2><a class="hlink" href="#indented"><small id="indented">2.1</small> indented</a></h2>
+<h1><a class="hlink" href="#unindented"><small id="unindented">3.</small> unindented</a></h1>
 "##,
         )
     }
