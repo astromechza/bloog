@@ -46,7 +46,9 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                       flex-grow: 1;
                     }
                     footer.container {
-                      margin: 1em auto;
+                      margin: 2em auto;
+                      text-align: center;
+                      padding-bottom: 1em;
                     }
                     hr {
                         border: 0;
