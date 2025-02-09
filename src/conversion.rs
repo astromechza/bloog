@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use maud::html;
 use pulldown_cmark::{html, BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -104,6 +105,21 @@ impl HeadingChecker {
         }
     }
 
+    fn convert_to_valid_id(s: impl AsRef<str>) -> String {
+        s.as_ref()
+            .chars()
+            .filter_map(|c| match c {
+                'a'..='z' => Some(c),
+                'A'..='Z' => Some(c.to_ascii_lowercase()),
+                '0'..='9' => Some(c),
+                '_' => Some(c),
+                '-' => Some(c),
+                ' ' => Some('-'),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub(crate) fn observe<'a>(&mut self, evt: &Event<'a>) -> Result<Event<'a>, anyhow::Error> {
         match evt {
             Event::Start(Tag::Heading { level, .. }) => {
@@ -130,20 +146,29 @@ impl HeadingChecker {
                     }
                 }
                 self.level = num_level;
-                let mut out = String::with_capacity(self.expected_number.len() * 2 + 16);
-                out.push_str("<small>");
+                let mut out = String::with_capacity(self.expected_number.len() * 2);
                 for (i, x) in self.expected_number.iter().enumerate() {
                     out.push_str(x.to_string().as_str());
                     if self.expected_number.len() == 1 || i < self.expected_number.len() - 1 {
                         out.push('.');
                     }
                 }
-                out.push_str("</small>");
                 self.expected_prefix = Some(out);
             }
             Event::Text(s) => {
                 if let Some(pref) = &self.expected_prefix {
-                    return Ok(Event::InlineHtml(CowStr::from(format!("{} {}", pref, s))));
+                    let valid_id = Self::convert_to_valid_id(s);
+                    return Ok(Event::InlineHtml(CowStr::from(
+                        html! {
+                            a class="hlink" href={"#" (valid_id) } {
+                                small id=(valid_id) {
+                                    (pref)
+                                }
+                                (s)
+                            }
+                        }
+                        .0,
+                    )));
                 }
                 self.expected_prefix = None
             }
@@ -209,10 +234,10 @@ mod tests {
                 HashSet::new()
             )
             .unwrap_or_else(|e| e.to_string()),
-            r##"<h1><small>1.</small> fine</h1>
-<h1><small>2.</small> also fine</h1>
-<h2><small>2.1</small> indented</h2>
-<h1><small>3.</small> unindented</h1>
+            r##"<h1><a class="hlink" href="#fine"><small id="fine">1.</small>fine</a></h1>
+<h1><a class="hlink" href="#also-fine"><small id="also-fine">2.</small>also fine</a></h1>
+<h2><a class="hlink" href="#indented"><small id="indented">2.1</small>indented</a></h2>
+<h1><a class="hlink" href="#unindented"><small id="unindented">3.</small>unindented</a></h1>
 "##,
         )
     }

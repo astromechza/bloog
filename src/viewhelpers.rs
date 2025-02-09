@@ -67,6 +67,9 @@ article a[href^="http"]::after {
   background-size: 100%;
   background-image: url("/images/link.svg");
 }
+article a.hlink { color: darkslategrey; text-decoration: none; }
+article a.hlink:hover { text-decoration-line: underline; text-decoration-style: dotted; }
+
 article img:not([src$=".svg"]) {
   border-radius: 0.3em;
 }
