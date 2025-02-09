@@ -165,10 +165,16 @@ async fn edit_post_handler(
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
     match store.get_post_raw(&id).await.map_resp_err(&htmx_context)? {
-        Some((post, raw_content)) => {
-            let html_output = conversion::convert(raw_content.as_str(), HashSet::new()).map_resp_err(&htmx_context)?;
-            Ok(views::edit_posts_page(post, raw_content, html_output, None, htmx_context))
-        }
+        Some((post, raw_content)) => match conversion::convert(raw_content.as_str(), HashSet::new()) {
+            Ok(html_output) => Ok(views::edit_posts_page(post, raw_content, html_output, None, htmx_context)),
+            Err(e) => Ok(views::edit_posts_page(
+                post,
+                raw_content,
+                String::new(),
+                Some(e.to_string()),
+                htmx_context,
+            )),
+        },
         None => Ok(views::not_found_page(Method::GET, uri, HtmxContext::try_from(&headers).ok())),
     }
 }

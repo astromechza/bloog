@@ -1,6 +1,6 @@
 use crate::htmx::HtmxContext;
 use crate::store::{Image, Post};
-use crate::viewhelpers::render_body_html_or_htmx;
+use crate::viewhelpers::{render_body_html_or_htmx, COMMON_CSS};
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use chrono::{Datelike, Local};
@@ -26,16 +26,9 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 style nonce="123456789" {
+                    (PreEscaped(COMMON_CSS))
                     (PreEscaped(r#"
-                    html, body { height: 100% }
-                    body { display: flex; flex-direction: column; }
-                    pre code { display: block; white-space: pre-wrap; }
-                    ul { list-style: circle outside; }
-                    ul li { margin-left: 1em; }
                     .index-nav-ul { margin: 0; list-style: circle outside; }
-                    body { background-color: floralwhite; }
-                    .footnote-definition { margin-bottom: 2em; }
-                    .footnote-definition p { display: inline; }
                     header.row { justify-content: space-between; align-items: center; }
                     header.row .column { max-width: fit-content; }
                     header.row nav.column { margin: 0; }
@@ -47,14 +40,6 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                     .block { display: block; }
                     .m-b-05 { margin-bottom: 0.5em; }
                     .m-b-1 { margin-bottom: 1em; }
-                    .container {
-                      color: darkslategrey;
-                      font-family: 'Verdana', sans-serif;
-                      font-size: 1em;
-                      font-weight: 300;
-                      letter-spacing: .01em;
-                      line-height: 1.6;
-                    }
                     main.container {
                       max-width: 100rem;
                       margin: 2em auto 0;
@@ -67,24 +52,6 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                         border: 0;
                         border-top: 0.1rem dotted darkslategrey;
                         margin: 3.0rem 0;
-                    }
-                    article a {
-                      text-decoration-line: underline;
-                      text-decoration-style: dotted;
-                    }
-                    article a[href^="http"]::after {
-                      content: "";
-                      display: inline-block;
-                      width: 0.6em;
-                      height: 0.6em;
-                      margin-bottom: 0.1em;
-                      margin-left: 0.25em;
-                      margin-right: 0.1em;
-                      background-size: 100%;
-                      background-image: url("/images/link.svg");
-                    }
-                    article img:not([src$=".svg"]) {
-                      border-radius: 0.3em;
                     }
                     "#))
                 }
@@ -116,7 +83,7 @@ pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxC
         html! {
             main.container {
                 header.row.m-b-05 {
-                    h2.column {
+                    h1.column {
                         a href="/" title="Back to index" {
                             "/ "
                         }
@@ -157,7 +124,7 @@ pub(crate) fn not_found_page(uri: Uri, htmx_context: Option<HtmxContext>) -> imp
         html! {
             main.container {
                 header.row.m-b-05 {
-                    h2.column {
+                    h1.column {
                         a href="/" title="Back to index" {
                             "/ "
                         }
@@ -192,7 +159,7 @@ pub(crate) fn get_index_page(
         html! {
             main.container {
                 header.row.m-b-05 {
-                    h2.column {
+                    h1.column {
                         a href="/" title="Back to index" {
                             "/ "
                         }
@@ -232,7 +199,7 @@ pub(crate) fn get_index_page(
                     nav {
                         @for (y, g) in year_groups {
                             ul.index-nav-ul {
-                                h3 { (y) }
+                                h2 { (y) }
                                 @for p in g {
                                     li {
                                         a href={ "/posts/" (&p.slug) } {
@@ -272,7 +239,7 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Opti
         html! {
             main.container {
                 header.row.m-b-05 {
-                    h2.column {
+                    h1.column {
                         a href="/" title="Back to index" {
                             "/ "
                         }
@@ -311,7 +278,7 @@ pub(crate) fn get_image_page(image: Image, htmx_context: Option<HtmxContext>) ->
         html! {
             main.container {
                 header.m-b-05 {
-                    h2 {
+                    h1 {
                         a href="/" title="Back to index" {
                             "/ "
                         }

@@ -34,3 +34,45 @@ pub(crate) fn render_body_html_or_htmx(
         (code, hm, outer(title.as_ref(), inner).0)
     }
 }
+
+pub(crate) const COMMON_CSS: &str = r###"
+html, body { height: 100% }
+body { display: flex; flex-direction: column; }
+pre code { display: block; white-space: pre-wrap; }
+ul { list-style: circle outside; }
+ul li { margin-left: 1em; }
+body { background-color: floralwhite; }
+.footnote-definition { margin-bottom: 2em; }
+.footnote-definition p { display: inline; }
+.container {
+  color: darkslategrey;
+  font-family: 'Verdana', sans-serif;
+  font-size: 1em;
+  font-weight: 300;
+  letter-spacing: .01em;
+  line-height: 1.6;
+}
+article a {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+}
+article a[href^="http"]::after {
+  content: "";
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-bottom: 0.1em;
+  margin-left: 0.25em;
+  margin-right: 0.1em;
+  background-size: 100%;
+  background-image: url("/images/link.svg");
+}
+article img:not([src$=".svg"]) {
+  border-radius: 0.3em;
+}
+article h1 { font-size: 3.2rem; }
+article h2 { font-size: 2.7rem; }
+article h3 { font-size: 2.2rem; }
+article h4 { font-size: 1.8rem; }
+article h5 { font-size: 1.6rem; }
+"###;
