@@ -33,23 +33,28 @@ fn pulldown_parser(content: &str) -> (Arc<Mutex<Option<anyhow::Error>>>, Parser<
 
 pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<String, anyhow::Error> {
     let (error_capture, parser) = pulldown_parser(content);
-    let mut hn = HeadingChecker { level: 0 };
+    let mut hn = HeadingChecker {
+        level: 0,
+        expected_prefix: None,
+        expected_number: vec![],
+    };
     let lc = RelativeLinkChecker {
         links: valid_links.into_iter().collect(),
     };
-    let mapped_parser = parser.inspect(|evt| {
-        if let Err(e) = lc.observe(evt).and_then(|_| hn.observe(evt)) {
+    let mapped_parser = parser.map(|evt| {
+        lc.observe(&evt).and_then(|_| hn.observe(&evt)).unwrap_or_else(|e| {
             if let Ok(mut l) = error_capture.as_ref().lock() {
                 l.replace(e);
             }
-        }
+            evt.clone()
+        })
     });
     let mut output = String::new();
     html::push_html(&mut output, mapped_parser);
 
     if let Ok(locked) = error_capture.lock() {
         if let Some(e) = locked.as_ref() {
-            return Err(anyhow::anyhow!("{}", e));
+            return Err(anyhow::format_err!("{}", e));
         }
     }
     Ok(output)
@@ -61,28 +66,31 @@ struct RelativeLinkChecker {
 }
 
 impl RelativeLinkChecker {
-    fn observe(&self, event: &Event) -> Result<(), anyhow::Error> {
+    fn observe<'a>(&self, event: &Event<'a>) -> Result<Event<'a>, anyhow::Error> {
         let capture = match &event {
             Event::Start(Tag::Image { dest_url, .. }) => Some(("image", dest_url)),
             Event::Start(Tag::Link { dest_url, .. }) => Some(("link", dest_url)),
             _ => None,
         };
-        capture
+        if let Some((link_type, dest_url)) = capture
             .filter(|_| !self.links.is_empty())
             .filter(|(_, dl)| !dl.starts_with("http://") && !dl.starts_with("https://") && !self.links.contains(&dl.to_string()))
-            .map_or(Ok(()), |(link_type, dest_url)| {
-                Err(anyhow!(
-                    "{} '{}' references a relative path which does not exist",
-                    link_type,
-                    dest_url
-                ))
-            })
+        {
+            return Err(anyhow!(
+                "{} '{}' references a relative path which does not exist",
+                link_type,
+                dest_url
+            ));
+        }
+        Ok(event.clone())
     }
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 struct HeadingChecker {
     level: i16,
+    expected_number: Vec<usize>,
+    expected_prefix: Option<String>,
 }
 impl HeadingChecker {
     fn hl_to_i16(h: HeadingLevel) -> i16 {
@@ -96,21 +104,52 @@ impl HeadingChecker {
         }
     }
 
-    pub(crate) fn observe(&mut self, evt: &Event) -> Result<(), anyhow::Error> {
-        if let Event::Start(Tag::Heading { level, .. }) = evt {
-            let num_level = Self::hl_to_i16(*level);
-            if num_level < self.level - 1 || num_level > self.level + 1 {
-                return Err(anyhow::anyhow!(
-                    "bad heading with level h{}: heading level should be h{}, h{}, or h{}",
-                    num_level,
-                    self.level,
-                    self.level - 1,
-                    self.level + 1
-                ));
+    pub(crate) fn observe<'a>(&mut self, evt: &Event<'a>) -> Result<Event<'a>, anyhow::Error> {
+        match evt {
+            Event::Start(Tag::Heading { level, .. }) => {
+                let num_level = Self::hl_to_i16(*level);
+                if num_level < self.level - 1 || num_level > self.level + 1 {
+                    return Err(anyhow::anyhow!(
+                        "bad heading with level h{}: heading level should be h{}, h{}, or h{}",
+                        num_level,
+                        self.level,
+                        self.level - 1,
+                        self.level + 1
+                    ));
+                }
+                if num_level == self.level && !self.expected_number.is_empty() {
+                    if let Some(l) = self.expected_number.pop() {
+                        self.expected_number.push(l + 1);
+                    }
+                } else if num_level > self.level {
+                    self.expected_number.push(1)
+                } else if num_level < self.level {
+                    self.expected_number.pop();
+                    if let Some(l) = self.expected_number.pop() {
+                        self.expected_number.push(l + 1);
+                    }
+                }
+                self.level = num_level;
+                let mut out = String::with_capacity(self.expected_number.len() * 2 + 16);
+                out.push_str("<small>");
+                for (i, x) in self.expected_number.iter().enumerate() {
+                    out.push_str(x.to_string().as_str());
+                    if self.expected_number.len() == 1 || i < self.expected_number.len() - 1 {
+                        out.push('.');
+                    }
+                }
+                out.push_str("</small>");
+                self.expected_prefix = Some(out);
             }
-            self.level = num_level;
+            Event::Text(s) => {
+                if let Some(pref) = &self.expected_prefix {
+                    return Ok(Event::InlineHtml(CowStr::from(format!("{} {}", pref, s))));
+                }
+                self.expected_prefix = None
+            }
+            _ => self.expected_prefix = None,
         }
-        Ok(())
+        Ok(evt.clone())
     }
 }
 
@@ -154,6 +193,23 @@ mod tests {
             )
             .unwrap_or_else(|e| e.to_string()),
             "bad heading with level h3: heading level should be h1, h0, or h2",
+        )
+    }
+
+    #[test]
+    fn test_number_headings() {
+        assert_eq!(
+            convert(
+                r"
+# fine
+# also fine
+## indented
+# unindented
+",
+                HashSet::new()
+            )
+            .unwrap_or_else(|e| e.to_string()),
+            "<h1>1 fine</h1>\n<h1>2 also fine</h1>\n<h2>2.1 indented</h2>\n<h1>3 unindented</h1>\n",
         )
     }
 }

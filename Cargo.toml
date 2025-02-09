@@ -10,7 +10,7 @@ chrono = { version = "0.4.39" , features = ["serde", "rkyv-64", "alloc"]}
 clap = { version = "4.5.27", features = ["derive", "env", "error-context", "help", "std", "usage", "cargo"], default-features = false }
 futures = { version = "0.3.31" }
 image = { version = "0.25.5", features = ["jpeg", "png", "webp"] }
-itertools = { version = "0.14.0" }
+itertools = "0.14.0"
 maud = { version = "0.27.0", features = ["axum"] }
 object_store = { version = "0.11.2" , features = ["cloud", "http", "aws"]}
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }

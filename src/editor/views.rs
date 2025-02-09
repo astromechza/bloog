@@ -1,5 +1,6 @@
 use crate::htmx::HtmxContext;
 use crate::store::{Image, Post};
+use crate::viewhelpers::COMMON_CSS;
 use anyhow::Error;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
@@ -13,21 +14,13 @@ fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {
         html {
             head {
                 title { (title.as_ref()) }
-                style {
-                    r#"
-                        /**
-                         * Minified by jsDelivr using clean-css v5.3.2.
-                         * Original file: /npm/modern-normalize@3.0.1/modern-normalize.css
-                         *
-                         * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
-                         */
-                        /*! modern-normalize v3.0.1 | MIT License | https://github.com/sindresorhus/modern-normalize */
-                        *,::after,::before{box-sizing:border-box}html{font-family:system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif,'Apple Color Emoji','Segoe UI Emoji';line-height:1.15;-webkit-text-size-adjust:100%;tab-size:4}body{margin:0}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{border-color:currentcolor}button,input,optgroup,select,textarea{font-family:inherit;font-size:100%;line-height:1.15;margin:0}[type=button],[type=reset],[type=submit],button{-webkit-appearance:button}legend{padding:0}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}
-                        /*# sourceMappingURL=/sm/d2d8cd206fb9f42f071e97460f3ad9c875edb5e7a4b10f900a83cdf8401c53a9.map */
-                    "#
-                }
-                link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
+                meta charset="utf-8";
                 link rel="shortcut icon" type="image/svg" href="/favicon.svg";
+                link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
+                link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
+                style {
+                    (PreEscaped(COMMON_CSS))
+                }
                 script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js" integrity="sha512-2kIcAizYXhIn8TzUvqzEDZNuDZ+aW7yE/+f1HJHXFjQcGNfv1kqzJSTBRBSlOgp6B/KZsz1K0a3ZTqP9dnxioQ==" crossorigin="anonymous" referrerpolicy="no-referrer" {};
             }
             body hx-boost="true" id="body" {
@@ -46,7 +39,7 @@ pub(crate) fn render_body_semantics(header: &str, sections: Vec<Markup>) -> Mark
                     a.button.button-clear.column href="/images" { "Images" }
                     a.button.button-clear.column href="/debug" { "Debug" }
                 }
-                h2 { (header) }
+                h1 { (header) }
             }
             @for section in sections {
                 section { (section) }
@@ -290,10 +283,9 @@ pub(crate) fn edit_posts_page(
                     (render_post_form(Some((&post, content.as_ref())), false))
                 }
                 hr;
-                h4 { "Rendered" }
                 hr;
-                div hx-boost="false" {
-                    h2 { (post.title) }
+                h1 { (post.title) }
+                article hx-boost="false" {
                     (PreEscaped(html_content))
                 }
             }],
