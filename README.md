@@ -1,6 +1,6 @@
 # bloog (new blog)
 
-**NOTE**: while open-source, this blog binary is not 
+**NOTE**: while open-source, this binary is specific to me and not intended for general consumption (it has my name, bio, and themes embedded). Use this for inspiration or fork it and modify.
 
 This is a rewrite of my previous [binary-blog](https://github.com/astromechza/binary-blog), this time, optimised for writing!
 
