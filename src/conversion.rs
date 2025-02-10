@@ -1,3 +1,4 @@
+use crate::store::{Image, Post};
 use anyhow::anyhow;
 use maud::html;
 use pulldown_cmark::{html, BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag};
@@ -32,7 +33,20 @@ fn pulldown_parser(content: &str) -> (Arc<Mutex<Option<anyhow::Error>>>, Parser<
     (error_capture, parser)
 }
 
-pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<(String, String), anyhow::Error> {
+pub fn build_valid_links(ps: &[Post], is: &[Image]) -> HashSet<String> {
+    is.iter()
+        .flat_map(|i| {
+            vec![
+                format!("/images/{}", i.to_original().to_path_part().as_ref()),
+                format!("/images/{}", i.to_medium().to_path_part().as_ref()),
+            ]
+            .into_iter()
+        })
+        .chain(ps.iter().map(|p| format!("/posts/{}", p.slug)))
+        .collect::<HashSet<String>>()
+}
+
+pub fn convert(content: &str, valid_links: &HashSet<String>) -> Result<(String, String), anyhow::Error> {
     let (error_capture, parser) = pulldown_parser(content);
     let mut hn = HeadingChecker {
         level: 0,
@@ -40,9 +54,7 @@ pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<(String, S
         expected_number: vec![],
         toc: String::new(),
     };
-    let lc = RelativeLinkChecker {
-        links: valid_links.into_iter().collect(),
-    };
+    let lc = RelativeLinkChecker { links: valid_links };
     let mut output = String::new();
     {
         let mapped_parser = parser.map(|evt| {
@@ -65,11 +77,11 @@ pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<(String, S
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RelativeLinkChecker {
-    links: HashSet<String>,
+struct RelativeLinkChecker<'a> {
+    links: &'a HashSet<String>,
 }
 
-impl RelativeLinkChecker {
+impl RelativeLinkChecker<'_> {
     fn observe<'a>(&self, event: &Event<'a>) -> Result<Event<'a>, anyhow::Error> {
         let capture = match &event {
             Event::Start(Tag::Image { dest_url, .. }) => Some(("image", dest_url)),
@@ -208,14 +220,14 @@ mod tests {
 [internal](/some-link)
 ![internal](/does-not-exist)
 ",
-                HashSet::from(["/some-link".to_string()])
+                &HashSet::from(["/some-link".to_string()])
             )
             .unwrap_or_else(|e| (e.to_string(), String::new()))
             .0,
             "image '/does-not-exist' references a relative path which does not exist",
         );
         assert_eq!(
-            convert(r"![internal](/does-not-exist)", HashSet::new())
+            convert(r"![internal](/does-not-exist)", &HashSet::new())
                 .unwrap_or_else(|e| (e.to_string(), String::new()))
                 .0,
             "<p><img src=\"/does-not-exist\" alt=\"internal\" /></p>\n",
@@ -233,7 +245,7 @@ mod tests {
 # unindented
 ### not fine
 ",
-                HashSet::new()
+                &HashSet::new()
             )
             .unwrap_or_else(|e| (e.to_string(), String::new()))
             .0,
@@ -250,7 +262,7 @@ mod tests {
 ## indented
 # unindented
 ",
-            HashSet::new(),
+            &HashSet::new(),
         )
         .unwrap_or_else(|e| (e.to_string(), String::new()));
         assert_eq!(

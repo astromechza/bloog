@@ -1,5 +1,6 @@
 mod views;
 
+use crate::conversion;
 use crate::conversion::convert;
 use crate::htmx::HtmxContext;
 use crate::store::{Image, Store};
@@ -10,6 +11,7 @@ use axum::routing::get;
 use axum::Router;
 use chrono::Datelike;
 use itertools::Itertools;
+use log::info;
 use maud::PreEscaped;
 use object_store::path::PathPart;
 use std::collections::{HashMap, HashSet};
@@ -27,6 +29,17 @@ impl Default for Config {
 }
 
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
+    info!("Validating..");
+    let images = store.list_images().await?;
+    let posts = store.list_posts().await?;
+    let valid_links = conversion::build_valid_links(&posts, &images);
+    for (i, p) in posts.iter().enumerate() {
+        info!("Validating  {}/{} ({})", i + 1, posts.len(), p.slug);
+        if let Some((_, raw)) = store.get_post_raw(p.slug.as_ref()).await? {
+            convert(raw.as_ref(), &valid_links)?;
+        }
+    }
+    info!("Done. Starting server..");
     let app = Router::new()
         .route("/", get(index_handler))
         .route("/favicon.ico", get(get_favicon_ico_handler))
@@ -127,7 +140,7 @@ async fn get_post_handler(
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
     if let Some((post, content)) = store.get_post_raw(&slug).await.map_resp_err(&htmx_context)? {
-        let (content_html, toc) = convert(content.as_str(), HashSet::default()).map_resp_err(&htmx_context)?;
+        let (content_html, toc) = convert(content.as_str(), &HashSet::default()).map_resp_err(&htmx_context)?;
         Ok(views::get_post_page(post, PreEscaped(content_html), PreEscaped(toc), htmx_context).into_response())
     } else {
         Ok(views::not_found_page(uri, htmx_context).into_response())

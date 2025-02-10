@@ -166,7 +166,7 @@ async fn edit_post_handler(
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
     match store.get_post_raw(&id).await.map_resp_err(&htmx_context)? {
-        Some((post, raw_content)) => match conversion::convert(raw_content.as_str(), HashSet::new()) {
+        Some((post, raw_content)) => match conversion::convert(raw_content.as_str(), &HashSet::new()) {
             Ok((html_output, toc)) => Ok(views::edit_posts_page(
                 post,
                 raw_content,

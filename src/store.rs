@@ -17,7 +17,6 @@ use object_store::local::LocalFileSystem;
 use object_store::path::{Path, PathPart, DELIMITER};
 use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::io::Cursor;
 use std::slice::Iter;
 use std::str::from_utf8;
@@ -178,20 +177,8 @@ impl Store {
     }
 
     pub async fn convert_html_with_validation(&self, content: &str) -> Result<(String, String), Error> {
-        let valid_paths = self
-            .list_images()
-            .await?
-            .iter()
-            .flat_map(|i| {
-                vec![
-                    format!("/images/{}", i.to_original().to_path_part().as_ref()),
-                    format!("/images/{}", i.to_medium().to_path_part().as_ref()),
-                ]
-                .into_iter()
-            })
-            .chain(self.list_posts().await?.iter().map(|p| format!("/posts/{}", p.slug)))
-            .collect::<HashSet<String>>();
-        conversion::convert(content, valid_paths)
+        let valid_links = conversion::build_valid_links(&self.list_posts().await?, &self.list_images().await?);
+        conversion::convert(content, &valid_links)
     }
 
     pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<(String, String), Error> {
