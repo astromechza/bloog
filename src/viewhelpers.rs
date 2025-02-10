@@ -78,4 +78,11 @@ article h2 { font-size: 2.7rem; }
 article h3 { font-size: 2.2rem; }
 article h4 { font-size: 1.8rem; }
 article h5 { font-size: 1.6rem; }
+
+nav.toc ul { font-size: 1.2rem; list-style: none; }
+nav.toc .toc-l1 { margin-left: 0; }
+nav.toc .toc-l2 { margin-left: 2rem; }
+nav.toc .toc-l3 { margin-left: 4rem; }
+nav.toc .toc-l4 { margin-left: 6rem; }
+nav.toc .toc-l5 { margin-left: 8rem; }
 "###;

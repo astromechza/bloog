@@ -177,7 +177,7 @@ impl Store {
         Ok(())
     }
 
-    pub async fn convert_html_with_validation(&self, content: &str) -> Result<String, Error> {
+    pub async fn convert_html_with_validation(&self, content: &str) -> Result<(String, String), Error> {
         let valid_paths = self
             .list_images()
             .await?
@@ -194,7 +194,7 @@ impl Store {
         conversion::convert(content, valid_paths)
     }
 
-    pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<String, Error> {
+    pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<(String, String), Error> {
         PathPart::parse(post.slug.as_str())?;
         if !(3..100).contains(&post.slug.len()) {
             return Err(anyhow!("invalid post slug - too short"));
@@ -202,7 +202,7 @@ impl Store {
             return Err(anyhow!("invalid post slug - no spaces allowed"));
         }
 
-        let html_content = self.convert_html_with_validation(content).await?;
+        let (html_content, toc) = self.convert_html_with_validation(content).await?;
 
         let post_path = self.sub_path.child("posts").child(post.slug.clone());
         let post_meta = PostMetadata::V1((post.date, post.title.clone(), IsPublished(post.published)));
@@ -252,7 +252,7 @@ impl Store {
         for p in cleanup_paths {
             self.os.delete(&p).await?;
         }
-        Ok(html_content)
+        Ok((html_content, toc))
     }
 
     async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<usize, Error> {
@@ -675,15 +675,16 @@ mod tests {
     #[tokio::test]
     async fn test_convert_empty() -> Result<(), Error> {
         let store = Store::default();
-        let content = store.convert_html_with_validation("").await?;
+        let (content, toc) = store.convert_html_with_validation("").await?;
         assert_eq!(content, "");
+        assert_eq!(toc, "");
         Ok(())
     }
 
     #[tokio::test]
     async fn test_convert_external_links() -> Result<(), Error> {
         let store = Store::default();
-        let content = store
+        let (content, _) = store
             .convert_html_with_validation(
                 r"
 [external](http://example.com)
@@ -717,13 +718,14 @@ mod tests {
             )
             .await?;
 
-        let content = store.convert_html_with_validation("[internal](/posts/my-first-post)").await?;
+        let (content, _) = store.convert_html_with_validation("[internal](/posts/my-first-post)").await?;
         assert_eq!(content, "<p><a href=\"/posts/my-first-post\">internal</a></p>\n");
         assert_eq!(
             store
                 .convert_html_with_validation("[internal](/posts/does-not-exist)")
                 .await
-                .unwrap_or_else(|e| e.to_string()),
+                .unwrap_or_else(|e| (e.to_string(), String::new()))
+                .0,
             "link '/posts/does-not-exist' references a relative path which does not exist",
         );
         Ok(())

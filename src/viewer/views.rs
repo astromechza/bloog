@@ -234,7 +234,7 @@ pub(crate) fn get_index_page(
     ).into_response()
 }
 
-pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
+pub(crate) fn get_post_page(post: Post, content_html: Markup, toc: Markup, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::OK,
         post.title.as_str(),
@@ -261,6 +261,7 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Opti
                     }
                     hr;
                     article {
+                        nav.toc { ul { (toc) } }
                         (content_html)
                     }
                 }

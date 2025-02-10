@@ -32,33 +32,36 @@ fn pulldown_parser(content: &str) -> (Arc<Mutex<Option<anyhow::Error>>>, Parser<
     (error_capture, parser)
 }
 
-pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<String, anyhow::Error> {
+pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<(String, String), anyhow::Error> {
     let (error_capture, parser) = pulldown_parser(content);
     let mut hn = HeadingChecker {
         level: 0,
         expected_prefix: None,
         expected_number: vec![],
+        toc: String::new(),
     };
     let lc = RelativeLinkChecker {
         links: valid_links.into_iter().collect(),
     };
-    let mapped_parser = parser.map(|evt| {
-        lc.observe(&evt).and_then(|_| hn.observe(&evt)).unwrap_or_else(|e| {
-            if let Ok(mut l) = error_capture.as_ref().lock() {
-                l.replace(e);
-            }
-            evt.clone()
-        })
-    });
     let mut output = String::new();
-    html::push_html(&mut output, mapped_parser);
+    {
+        let mapped_parser = parser.map(|evt| {
+            lc.observe(&evt).and_then(|_| hn.observe(&evt)).unwrap_or_else(|e| {
+                if let Ok(mut l) = error_capture.as_ref().lock() {
+                    l.replace(e);
+                }
+                evt.clone()
+            })
+        });
+        html::push_html(&mut output, mapped_parser);
+    };
 
     if let Ok(locked) = error_capture.lock() {
         if let Some(e) = locked.as_ref() {
             return Err(anyhow::format_err!("{}", e));
         }
     }
-    Ok(output)
+    Ok((output, hn.toc.to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +95,7 @@ struct HeadingChecker {
     level: i16,
     expected_number: Vec<usize>,
     expected_prefix: Option<String>,
+    toc: String,
 }
 impl HeadingChecker {
     fn hl_to_i16(h: HeadingLevel) -> i16 {
@@ -158,6 +162,17 @@ impl HeadingChecker {
             Event::Text(s) => {
                 if let Some(pref) = &self.expected_prefix {
                     let valid_id = Self::convert_to_valid_id(s);
+                    self.toc.push_str(
+                        html! {
+                            li class=(format!("toc-l{}", self.expected_number.len())) {
+                                a href={"#" (valid_id)} {
+                                     (pref) " " (s)
+                                }
+                            }
+                        }
+                        .0
+                        .as_str(),
+                    );
                     return Ok(Event::InlineHtml(CowStr::from(
                         html! {
                             a class="hlink" href={"#" (valid_id) } {
@@ -195,11 +210,14 @@ mod tests {
 ",
                 HashSet::from(["/some-link".to_string()])
             )
-            .unwrap_or_else(|e| e.to_string()),
+            .unwrap_or_else(|e| (e.to_string(), String::new()))
+            .0,
             "image '/does-not-exist' references a relative path which does not exist",
         );
         assert_eq!(
-            convert(r"![internal](/does-not-exist)", HashSet::new()).unwrap_or_else(|e| e.to_string()),
+            convert(r"![internal](/does-not-exist)", HashSet::new())
+                .unwrap_or_else(|e| (e.to_string(), String::new()))
+                .0,
             "<p><img src=\"/does-not-exist\" alt=\"internal\" /></p>\n",
         );
     }
@@ -217,29 +235,38 @@ mod tests {
 ",
                 HashSet::new()
             )
-            .unwrap_or_else(|e| e.to_string()),
+            .unwrap_or_else(|e| (e.to_string(), String::new()))
+            .0,
             "bad heading with level h3: heading level should be h1, h0, or h2",
         )
     }
 
     #[test]
     fn test_number_headings() {
-        assert_eq!(
-            convert(
-                r"
+        let (content, toc) = convert(
+            r"
 # fine
 # also fine
 ## indented
 # unindented
 ",
-                HashSet::new()
-            )
-            .unwrap_or_else(|e| e.to_string()),
+            HashSet::new(),
+        )
+        .unwrap_or_else(|e| (e.to_string(), String::new()));
+        assert_eq!(
+            content,
             r##"<h1><a class="hlink" href="#fine"><small id="fine">1.</small> fine</a></h1>
 <h1><a class="hlink" href="#also-fine"><small id="also-fine">2.</small> also fine</a></h1>
 <h2><a class="hlink" href="#indented"><small id="indented">2.1</small> indented</a></h2>
 <h1><a class="hlink" href="#unindented"><small id="unindented">3.</small> unindented</a></h1>
 "##,
-        )
+        );
+        assert_eq!(
+            toc,
+            "<li class=\"toc-l1\"><a href=\"#fine\">1. fine</a></li>\
+            <li class=\"toc-l1\"><a href=\"#also-fine\">2. also fine</a></li>\
+            <li class=\"toc-l2\"><a href=\"#indented\">2.1 indented</a></li>\
+            <li class=\"toc-l1\"><a href=\"#unindented\">3. unindented</a></li>"
+        );
     }
 }

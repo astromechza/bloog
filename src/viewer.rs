@@ -135,8 +135,8 @@ async fn get_post_handler(
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
     if let Some((post, content)) = store.get_post_raw(&slug).await.map_resp_err(&htmx_context)? {
-        let content_html = convert(content.as_str(), HashSet::default()).map_resp_err(&htmx_context)?;
-        Ok(views::get_post_page(post, PreEscaped(content_html), htmx_context).into_response())
+        let (content_html, toc) = convert(content.as_str(), HashSet::default()).map_resp_err(&htmx_context)?;
+        Ok(views::get_post_page(post, PreEscaped(content_html), PreEscaped(toc), htmx_context).into_response())
     } else {
         Ok(views::not_found_page(uri, htmx_context).into_response())
     }
