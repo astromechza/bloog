@@ -1,5 +1,5 @@
 use crate::htmx::HtmxContext;
-use crate::store::{Image, Post};
+use crate::store::Post;
 use crate::viewhelpers::{render_body_html_or_htmx, COMMON_CSS};
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
@@ -264,32 +264,6 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, toc: Markup, htmx_
                         nav.toc { ul { (toc) } }
                         (content_html)
                     }
-                }
-            }
-            (FOOTER.deref())
-        },
-        render_body_html,
-        htmx_context,
-    )
-    .into_response()
-}
-
-pub(crate) fn get_image_page(image: Image, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
-    render_body_html_or_htmx(
-        StatusCode::OK,
-        image.to_path_part(),
-        html! {
-            main.container {
-                header.m-b-05 {
-                    h1 {
-                        a href="/" title="Back to index" {
-                            "/ "
-                        }
-                        (image.to_path_part().as_ref())
-                    }
-                }
-                section {
-                    img src={"/images/" (image.to_path_part().as_ref()) };
                 }
             }
             (FOOTER.deref())
