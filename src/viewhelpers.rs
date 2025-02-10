@@ -14,6 +14,13 @@ pub(crate) fn render_body_html_or_htmx(
     let mut hm = HeaderMap::new();
     hm.insert("Content-Type", HeaderValue::from_static("text/html"));
     hm.insert("Vary", HeaderValue::from_static("HX-Request"));
+    hm.insert(
+        "Cache-Control",
+        HeaderValue::from_static(match code {
+            StatusCode::OK => "public, max-age=300, stale-while-revalidate=30",
+            _ => "no-cache",
+        }),
+    );
     if let Some(hc) = htmx_context {
         // Ensure that we retarget the request if it's attempting to swap to the wrong place.
         if hc.target.is_some_and(|x| x.ne("#body")) {
@@ -52,6 +59,9 @@ body { background-color: floralwhite; }
   letter-spacing: .01em;
   line-height: 1.6;
 }
+
+header h1 { font-size: 3.6rem; }
+
 article a {
   text-decoration-line: underline;
   text-decoration-style: dotted;
@@ -79,7 +89,7 @@ article h3 { font-size: 2.2rem; }
 article h4 { font-size: 1.8rem; }
 article h5 { font-size: 1.6rem; }
 
-nav.toc ul { font-size: 1.2rem; list-style: none; }
+nav.toc ul { font-size: 1.4rem; list-style: none; }
 nav.toc .toc-l1 { margin-left: 0; }
 nav.toc .toc-l2 { margin-left: 2rem; }
 nav.toc .toc-l3 { margin-left: 4rem; }

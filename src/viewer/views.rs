@@ -4,7 +4,6 @@ use crate::viewhelpers::{render_body_html_or_htmx, COMMON_CSS};
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use chrono::{Datelike, Local};
-use clap::crate_name;
 use clap::crate_version;
 use lazy_static::lazy_static;
 use maud::{html, Markup, PreEscaped, DOCTYPE};
@@ -71,8 +70,7 @@ lazy_static! {
         footer.container {
             small {
                 "© Ben Meier " (Local::now().year()) " - "
-                a href="https://github.com/astromechza/bloog" { "astromechza/bloog" } " - "
-                (crate_name!()) "@" (crate_version!())
+                a target="_blank" href={"https://github.com/astromechza/bloog/releases/tag/" (crate_version!()) } { "astromechza/bloog@" (crate_version!()) }
             }
         }
     };
