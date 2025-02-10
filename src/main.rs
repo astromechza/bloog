@@ -2,6 +2,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use clap::{Parser, Subcommand};
+use log::info;
 use url::Url;
 
 // Define that crate htmx exists. The code can be found in the htmx file.
@@ -20,7 +21,7 @@ async fn main() {
     }
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(version, about)]
 struct Args {
     #[arg(
@@ -39,7 +40,7 @@ struct Args {
     command: Command,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 enum Command {
     /// Launch the read-only viewer process.
     Viewer,
@@ -49,7 +50,19 @@ enum Command {
 
 async fn main_err() -> Result<(), anyhow::Error> {
     let args = Args::try_parse()?;
+    env_logger::init();
+    let mut anonymous_url = args.store_url.clone();
+    anonymous_url.set_query(None);
+    let _ = anonymous_url.set_password(None);
+    info!(
+        "Parsed args {:?}, creating store..",
+        Args {
+            store_url: anonymous_url,
+            ..args.clone()
+        }
+    );
     let store = store::Store::from_url(&args.store_url)?;
+    info!("Starting {:?}..", args.command);
     match args.command {
         Command::Viewer => viewer::run(viewer::Config { port: args.port as u16 }, store).await?,
         Command::Editor => editor::run(editor::Config { port: args.port as u16 }, store).await?,

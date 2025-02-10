@@ -1,5 +1,6 @@
 mod views;
 
+use crate::conversion;
 use crate::conversion::convert;
 use crate::htmx::HtmxContext;
 use crate::store::{Image, Store};
@@ -10,6 +11,7 @@ use axum::routing::get;
 use axum::Router;
 use chrono::Datelike;
 use itertools::Itertools;
+use log::info;
 use maud::PreEscaped;
 use object_store::path::PathPart;
 use std::collections::{HashMap, HashSet};
@@ -27,6 +29,17 @@ impl Default for Config {
 }
 
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
+    info!("Validating..");
+    let images = store.list_images().await?;
+    let posts = store.list_posts().await?;
+    let valid_links = conversion::build_valid_links(&posts, &images);
+    for (i, p) in posts.iter().enumerate() {
+        info!("Validating  {}/{} ({})", i + 1, posts.len(), p.slug);
+        if let Some((_, raw)) = store.get_post_raw(p.slug.as_ref()).await? {
+            convert(raw.as_ref(), &valid_links)?;
+        }
+    }
+    info!("Done. Starting server..");
     let app = Router::new()
         .route("/", get(index_handler))
         .route("/favicon.ico", get(get_favicon_ico_handler))
@@ -71,10 +84,17 @@ async fn not_found_handler(uri: Uri, headers: HeaderMap) -> Response {
 
 async fn get_image_handler(
     State(store): State<Arc<Store>>,
+    Path(slug): Path<String>,
     headers: HeaderMap,
     uri: Uri,
-    Path(slug): Path<String>,
 ) -> Result<Response, ResponseError> {
+    if HtmxContext::try_from(&headers).is_ok() {
+        let mut hm = HeaderMap::new();
+        if let Ok(hv) = HeaderValue::try_from(uri.path()) {
+            hm.insert("HX-Redirect", hv);
+        }
+        return Ok((StatusCode::OK, hm).into_response());
+    }
     if let Some(content) = match slug.as_str() {
         "favicon.svg" => Some("<svg version='1.0' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' viewBox='0 0 64 64' enable-background='new 0 0 64 64' xml:space='preserve'><g><g><polygon fill='#F9EBB2' points='46,3.414 46,14 56.586,14 '/><path fill='#F9EBB2' d='M45,16c-0.553,0-1-0.447-1-1V2H8C6.896,2,6,2.896,6,4v56c0,1.104,0.896,2,2,2h48c1.104,0,2-0.896,2-2V16 H45z'/></g><path fill='#394240' d='M14,26c0,0.553,0.447,1,1,1h34c0.553,0,1-0.447,1-1s-0.447-1-1-1H15C14.447,25,14,25.447,14,26z'/><path fill='#394240' d='M49,37H15c-0.553,0-1,0.447-1,1s0.447,1,1,1h34c0.553,0,1-0.447,1-1S49.553,37,49,37z'/><path fill='#394240' d='M49,43H15c-0.553,0-1,0.447-1,1s0.447,1,1,1h34c0.553,0,1-0.447,1-1S49.553,43,49,43z'/><path fill='#394240' d='M49,49H15c-0.553,0-1,0.447-1,1s0.447,1,1,1h34c0.553,0,1-0.447,1-1S49.553,49,49,49z'/><path fill='#394240' d='M49,31H15c-0.553,0-1,0.447-1,1s0.447,1,1,1h34c0.553,0,1-0.447,1-1S49.553,31,49,31z'/><path fill='#394240' d='M15,20h16c0.553,0,1-0.447,1-1s-0.447-1-1-1H15c-0.553,0-1,0.447-1,1S14.447,20,15,20z'/><path fill='#394240' d='M59.706,14.292L45.708,0.294C45.527,0.112,45.277,0,45,0H8C5.789,0,4,1.789,4,4v56c0,2.211,1.789,4,4,4h48 c2.211,0,4-1.789,4-4V15C60,14.723,59.888,14.473,59.706,14.292z M46,3.414L56.586,14H46V3.414z M58,60c0,1.104-0.896,2-2,2H8 c-1.104,0-2-0.896-2-2V4c0-1.104,0.896-2,2-2h36v13c0,0.553,0.447,1,1,1h13V60z'/><polygon opacity='0.15' fill='#231F20' points='46,3.414 56.586,14 46,14 '/></g></svg>"),
         "bluesky.svg" => Some(r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -3.268 64 68.414"><path fill="darkslategray" d="M13.873 3.805C21.21 9.332 29.103 20.537 32 26.55v15.882c0-.338-.13.044-.41.867-1.512 4.456-7.418 21.847-20.923 7.944-7.111-7.32-3.819-14.64 9.125-16.85-7.405 1.264-15.73-.825-18.014-9.015C1.12 23.022 0 8.51 0 6.55 0-3.268 8.579-.182 13.873 3.805zm36.254 0C42.79 9.332 34.897 20.537 32 26.55v15.882c0-.338.13.044.41.867 1.512 4.456 7.418 21.847 20.923 7.944 7.111-7.32 3.819-14.64-9.125-16.85 7.405 1.264 15.73-.825 18.014-9.015C62.88 23.022 64 8.51 64 6.55c0-9.818-8.578-6.732-13.873-2.745z"/></svg>"##),
@@ -86,23 +106,8 @@ async fn get_image_handler(
         hm.insert("Content-Type", HeaderValue::from_static("image/svg+xml"));
         return Ok((StatusCode::OK, hm, content).into_response())
     };
-
-    let htmx_context = HtmxContext::try_from(&headers).ok();
-
     let img = Image::try_from_path_part(PathPart::from(slug)).unwrap_or_default();
-
-    let can_html = htmx_context.is_some()
-        || headers
-            .get("Accept")
-            .is_some_and(|hv| hv.to_str().is_ok_and(|t| t.contains("text/html")));
-    if can_html {
-        if !store.check_image_exists(&img).await.map_resp_err(&htmx_context)? {
-            return Ok(views::not_found_page(uri, htmx_context).into_response());
-        }
-        return Ok(views::get_image_page(img.to_original(), htmx_context).into_response());
-    }
-
-    if let Some(image) = store.get_image_raw(&img).await.map_resp_err(&htmx_context)? {
+    if let Some(image) = store.get_image_raw(&img).await.map_resp_err(&None)? {
         let mut hm = HeaderMap::new();
         hm.insert("Content-Type", img.to_content_type());
         Ok((StatusCode::OK, hm, image).into_response())
@@ -135,8 +140,8 @@ async fn get_post_handler(
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
     if let Some((post, content)) = store.get_post_raw(&slug).await.map_resp_err(&htmx_context)? {
-        let content_html = convert(content.as_str(), HashSet::default()).map_resp_err(&htmx_context)?;
-        Ok(views::get_post_page(post, PreEscaped(content_html), htmx_context).into_response())
+        let (content_html, toc) = convert(content.as_str(), &HashSet::default()).map_resp_err(&htmx_context)?;
+        Ok(views::get_post_page(post, PreEscaped(content_html), PreEscaped(toc), htmx_context).into_response())
     } else {
         Ok(views::not_found_page(uri, htmx_context).into_response())
     }

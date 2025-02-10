@@ -20,6 +20,13 @@ fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 style {
                     (PreEscaped(COMMON_CSS))
+                    r##"
+                    textarea {
+                      min-height: 50rem;
+                      background: white;
+                      font-family: monospace;
+                    }
+                    "##
                 }
                 script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js" integrity="sha512-2kIcAizYXhIn8TzUvqzEDZNuDZ+aW7yE/+f1HJHXFjQcGNfv1kqzJSTBRBSlOgp6B/KZsz1K0a3ZTqP9dnxioQ==" crossorigin="anonymous" referrerpolicy="no-referrer" {};
             }
@@ -264,7 +271,8 @@ pub(crate) fn new_posts_page(post: Option<(&Post, &str)>, error: Option<String>,
 pub(crate) fn edit_posts_page(
     post: Post,
     content: String,
-    html_content: String,
+    html_content: Markup,
+    toc_content: Markup,
     error: Option<String>,
     htmx_context: Option<HtmxContext>,
 ) -> Response {
@@ -284,9 +292,10 @@ pub(crate) fn edit_posts_page(
                 }
                 hr;
                 hr;
-                h1 { (post.title) }
                 article hx-boost="false" {
-                    (PreEscaped(html_content))
+                    h1 { (post.title) }
+                    nav.toc { ul { (toc_content) } }
+                    (html_content)
                 }
             }],
         ),

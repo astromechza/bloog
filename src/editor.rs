@@ -10,6 +10,7 @@ use axum::routing::{delete, get, post};
 use axum::{Form, Router};
 use chrono::NaiveDate;
 use image::EncodableLayout;
+use maud::PreEscaped;
 use object_store::path::PathPart;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -165,12 +166,20 @@ async fn edit_post_handler(
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).ok();
     match store.get_post_raw(&id).await.map_resp_err(&htmx_context)? {
-        Some((post, raw_content)) => match conversion::convert(raw_content.as_str(), HashSet::new()) {
-            Ok(html_output) => Ok(views::edit_posts_page(post, raw_content, html_output, None, htmx_context)),
+        Some((post, raw_content)) => match conversion::convert(raw_content.as_str(), &HashSet::new()) {
+            Ok((html_output, toc)) => Ok(views::edit_posts_page(
+                post,
+                raw_content,
+                PreEscaped(html_output),
+                PreEscaped(toc),
+                None,
+                htmx_context,
+            )),
             Err(e) => Ok(views::edit_posts_page(
                 post,
                 raw_content,
-                String::new(),
+                PreEscaped::default(),
+                PreEscaped::default(),
                 Some(e.to_string()),
                 htmx_context,
             )),
@@ -206,14 +215,15 @@ async fn submit_edit_post_handler(
             .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
             .collect(),
     };
-    let (html_content, error) = match store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
-        Err(e) => (String::new(), Some(e.to_string())),
-        Ok(html_content) => (html_content, None),
+    let ((html_content, toc), error) = match store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
+        Err(e) => ((String::new(), String::new()), Some(e.to_string())),
+        Ok((html_content, toc)) => ((html_content, toc), None),
     };
     Ok(views::edit_posts_page(
         temporary_post,
         form.raw_content,
-        html_content,
+        PreEscaped(html_content),
+        PreEscaped(toc),
         error,
         htmx_context,
     ))

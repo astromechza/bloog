@@ -1,4 +1,6 @@
+use crate::store::{Image, Post};
 use anyhow::anyhow;
+use maud::html;
 use pulldown_cmark::{html, BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -31,41 +33,55 @@ fn pulldown_parser(content: &str) -> (Arc<Mutex<Option<anyhow::Error>>>, Parser<
     (error_capture, parser)
 }
 
-pub fn convert(content: &str, valid_links: HashSet<String>) -> Result<String, anyhow::Error> {
+pub fn build_valid_links(ps: &[Post], is: &[Image]) -> HashSet<String> {
+    is.iter()
+        .flat_map(|i| {
+            vec![
+                format!("/images/{}", i.to_original().to_path_part().as_ref()),
+                format!("/images/{}", i.to_medium().to_path_part().as_ref()),
+            ]
+            .into_iter()
+        })
+        .chain(ps.iter().map(|p| format!("/posts/{}", p.slug)))
+        .collect::<HashSet<String>>()
+}
+
+pub fn convert(content: &str, valid_links: &HashSet<String>) -> Result<(String, String), anyhow::Error> {
     let (error_capture, parser) = pulldown_parser(content);
     let mut hn = HeadingChecker {
         level: 0,
         expected_prefix: None,
         expected_number: vec![],
+        toc: String::new(),
     };
-    let lc = RelativeLinkChecker {
-        links: valid_links.into_iter().collect(),
-    };
-    let mapped_parser = parser.map(|evt| {
-        lc.observe(&evt).and_then(|_| hn.observe(&evt)).unwrap_or_else(|e| {
-            if let Ok(mut l) = error_capture.as_ref().lock() {
-                l.replace(e);
-            }
-            evt.clone()
-        })
-    });
+    let lc = RelativeLinkChecker { links: valid_links };
     let mut output = String::new();
-    html::push_html(&mut output, mapped_parser);
+    {
+        let mapped_parser = parser.map(|evt| {
+            lc.observe(&evt).and_then(|_| hn.observe(&evt)).unwrap_or_else(|e| {
+                if let Ok(mut l) = error_capture.as_ref().lock() {
+                    l.replace(e);
+                }
+                evt.clone()
+            })
+        });
+        html::push_html(&mut output, mapped_parser);
+    };
 
     if let Ok(locked) = error_capture.lock() {
         if let Some(e) = locked.as_ref() {
             return Err(anyhow::format_err!("{}", e));
         }
     }
-    Ok(output)
+    Ok((output, hn.toc.to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RelativeLinkChecker {
-    links: HashSet<String>,
+struct RelativeLinkChecker<'a> {
+    links: &'a HashSet<String>,
 }
 
-impl RelativeLinkChecker {
+impl RelativeLinkChecker<'_> {
     fn observe<'a>(&self, event: &Event<'a>) -> Result<Event<'a>, anyhow::Error> {
         let capture = match &event {
             Event::Start(Tag::Image { dest_url, .. }) => Some(("image", dest_url)),
@@ -91,6 +107,7 @@ struct HeadingChecker {
     level: i16,
     expected_number: Vec<usize>,
     expected_prefix: Option<String>,
+    toc: String,
 }
 impl HeadingChecker {
     fn hl_to_i16(h: HeadingLevel) -> i16 {
@@ -102,6 +119,21 @@ impl HeadingChecker {
             HeadingLevel::H5 => 5,
             HeadingLevel::H6 => 6,
         }
+    }
+
+    fn convert_to_valid_id(s: impl AsRef<str>) -> String {
+        s.as_ref()
+            .chars()
+            .filter_map(|c| match c {
+                'a'..='z' => Some(c),
+                'A'..='Z' => Some(c.to_ascii_lowercase()),
+                '0'..='9' => Some(c),
+                '_' => Some(c),
+                '-' => Some(c),
+                ' ' => Some('-'),
+                _ => None,
+            })
+            .collect()
     }
 
     pub(crate) fn observe<'a>(&mut self, evt: &Event<'a>) -> Result<Event<'a>, anyhow::Error> {
@@ -130,20 +162,41 @@ impl HeadingChecker {
                     }
                 }
                 self.level = num_level;
-                let mut out = String::with_capacity(self.expected_number.len() * 2 + 16);
-                out.push_str("<small>");
+                let mut out = String::with_capacity(self.expected_number.len() * 2);
                 for (i, x) in self.expected_number.iter().enumerate() {
                     out.push_str(x.to_string().as_str());
                     if self.expected_number.len() == 1 || i < self.expected_number.len() - 1 {
                         out.push('.');
                     }
                 }
-                out.push_str("</small>");
                 self.expected_prefix = Some(out);
             }
             Event::Text(s) => {
                 if let Some(pref) = &self.expected_prefix {
-                    return Ok(Event::InlineHtml(CowStr::from(format!("{} {}", pref, s))));
+                    let valid_id = Self::convert_to_valid_id(s);
+                    self.toc.push_str(
+                        html! {
+                            li class=(format!("toc-l{}", self.expected_number.len())) {
+                                a href={"#" (valid_id)} {
+                                     (pref) " " (s)
+                                }
+                            }
+                        }
+                        .0
+                        .as_str(),
+                    );
+                    return Ok(Event::InlineHtml(CowStr::from(
+                        html! {
+                            a class="hlink" href={"#" (valid_id) } {
+                                small id=(valid_id) {
+                                    (pref)
+                                }
+                                " "
+                                (s)
+                            }
+                        }
+                        .0,
+                    )));
                 }
                 self.expected_prefix = None
             }
@@ -167,13 +220,16 @@ mod tests {
 [internal](/some-link)
 ![internal](/does-not-exist)
 ",
-                HashSet::from(["/some-link".to_string()])
+                &HashSet::from(["/some-link".to_string()])
             )
-            .unwrap_or_else(|e| e.to_string()),
+            .unwrap_or_else(|e| (e.to_string(), String::new()))
+            .0,
             "image '/does-not-exist' references a relative path which does not exist",
         );
         assert_eq!(
-            convert(r"![internal](/does-not-exist)", HashSet::new()).unwrap_or_else(|e| e.to_string()),
+            convert(r"![internal](/does-not-exist)", &HashSet::new())
+                .unwrap_or_else(|e| (e.to_string(), String::new()))
+                .0,
             "<p><img src=\"/does-not-exist\" alt=\"internal\" /></p>\n",
         );
     }
@@ -189,31 +245,40 @@ mod tests {
 # unindented
 ### not fine
 ",
-                HashSet::new()
+                &HashSet::new()
             )
-            .unwrap_or_else(|e| e.to_string()),
+            .unwrap_or_else(|e| (e.to_string(), String::new()))
+            .0,
             "bad heading with level h3: heading level should be h1, h0, or h2",
         )
     }
 
     #[test]
     fn test_number_headings() {
-        assert_eq!(
-            convert(
-                r"
+        let (content, toc) = convert(
+            r"
 # fine
 # also fine
 ## indented
 # unindented
 ",
-                HashSet::new()
-            )
-            .unwrap_or_else(|e| e.to_string()),
-            r##"<h1><small>1.</small> fine</h1>
-<h1><small>2.</small> also fine</h1>
-<h2><small>2.1</small> indented</h2>
-<h1><small>3.</small> unindented</h1>
-"##,
+            &HashSet::new(),
         )
+        .unwrap_or_else(|e| (e.to_string(), String::new()));
+        assert_eq!(
+            content,
+            r##"<h1><a class="hlink" href="#fine"><small id="fine">1.</small> fine</a></h1>
+<h1><a class="hlink" href="#also-fine"><small id="also-fine">2.</small> also fine</a></h1>
+<h2><a class="hlink" href="#indented"><small id="indented">2.1</small> indented</a></h2>
+<h1><a class="hlink" href="#unindented"><small id="unindented">3.</small> unindented</a></h1>
+"##,
+        );
+        assert_eq!(
+            toc,
+            "<li class=\"toc-l1\"><a href=\"#fine\">1. fine</a></li>\
+            <li class=\"toc-l1\"><a href=\"#also-fine\">2. also fine</a></li>\
+            <li class=\"toc-l2\"><a href=\"#indented\">2.1 indented</a></li>\
+            <li class=\"toc-l1\"><a href=\"#unindented\">3. unindented</a></li>"
+        );
     }
 }

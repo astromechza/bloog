@@ -1,5 +1,5 @@
 use crate::htmx::HtmxContext;
-use crate::store::{Image, Post};
+use crate::store::Post;
 use crate::viewhelpers::{render_body_html_or_htmx, COMMON_CSS};
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
@@ -46,7 +46,9 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                       flex-grow: 1;
                     }
                     footer.container {
-                      margin: 1em auto;
+                      margin: 2em auto;
+                      text-align: center;
+                      padding-bottom: 1em;
                     }
                     hr {
                         border: 0;
@@ -232,7 +234,7 @@ pub(crate) fn get_index_page(
     ).into_response()
 }
 
-pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
+pub(crate) fn get_post_page(post: Post, content_html: Markup, toc: Markup, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::OK,
         post.title.as_str(),
@@ -259,34 +261,9 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, htmx_context: Opti
                     }
                     hr;
                     article {
+                        nav.toc { ul { (toc) } }
                         (content_html)
                     }
-                }
-            }
-            (FOOTER.deref())
-        },
-        render_body_html,
-        htmx_context,
-    )
-    .into_response()
-}
-
-pub(crate) fn get_image_page(image: Image, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
-    render_body_html_or_htmx(
-        StatusCode::OK,
-        image.to_path_part(),
-        html! {
-            main.container {
-                header.m-b-05 {
-                    h1 {
-                        a href="/" title="Back to index" {
-                            "/ "
-                        }
-                        (image.to_path_part().as_ref())
-                    }
-                }
-                section {
-                    img src={"/images/" (image.to_path_part().as_ref()) };
                 }
             }
             (FOOTER.deref())

@@ -1,6 +1,6 @@
 # bloog (new blog)
 
-**NOTE**: while open-source, this blog binary is not 
+**NOTE**: while open-source, this binary is specific to me and not intended for general consumption (it has my name, bio, and themes embedded). Use this for inspiration or fork it and modify.
 
 This is a rewrite of my previous [binary-blog](https://github.com/astromechza/binary-blog), this time, optimised for writing!
 
@@ -13,6 +13,9 @@ Features:
 - Posts stored as markdown in object storage.
 - Images stored in object storage and automatically resized and thumb-nailed on upload. SVGs are also supported.
 - Automatic broken link detection.
+- Automatic heading numbering, heading anchors, and table of contents generation.
+- Validation of invalid markdown and invalid heading nesting.
+- Validation of markdown conversion for all existing posts on startup.
 
 ```
 Usage: bloog [OPTIONS] --store-url <STORE_URL> <COMMAND>
