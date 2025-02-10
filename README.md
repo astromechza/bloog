@@ -13,6 +13,9 @@ Features:
 - Posts stored as markdown in object storage.
 - Images stored in object storage and automatically resized and thumb-nailed on upload. SVGs are also supported.
 - Automatic broken link detection.
+- Automatic heading numbering, heading anchors, and table of contents generation.
+- Validation of invalid markdown and invalid heading nesting.
+- Validation of markdown conversion for all existing posts on startup.
 
 ```
 Usage: bloog [OPTIONS] --store-url <STORE_URL> <COMMAND>
