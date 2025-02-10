@@ -104,12 +104,17 @@ async fn get_image_handler(
     } {
         let mut hm = HeaderMap::new();
         hm.insert("Content-Type", HeaderValue::from_static("image/svg+xml"));
+        hm.insert("Cache-Control", HeaderValue::from_static("public, max-age=86400, stale-while-revalidate=300"));
         return Ok((StatusCode::OK, hm, content).into_response())
     };
     let img = Image::try_from_path_part(PathPart::from(slug)).unwrap_or_default();
     if let Some(image) = store.get_image_raw(&img).await.map_resp_err(&None)? {
         let mut hm = HeaderMap::new();
         hm.insert("Content-Type", img.to_content_type());
+        hm.insert(
+            "Cache-Control",
+            HeaderValue::from_static("public, max-age=86400, stale-while-revalidate=300"),
+        );
         Ok((StatusCode::OK, hm, image).into_response())
     } else {
         Ok(StatusCode::NOT_FOUND.into_response())
