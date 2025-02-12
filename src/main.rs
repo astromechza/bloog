@@ -10,6 +10,7 @@ mod conversion;
 pub(crate) mod editor;
 pub(crate) mod htmx;
 pub(crate) mod path_utils;
+mod statics;
 pub(crate) mod store;
 mod viewer;
 mod viewhelpers;

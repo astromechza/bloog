@@ -15,7 +15,7 @@ fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {
             head {
                 title { (title.as_ref()) }
                 meta charset="utf-8";
-                link rel="shortcut icon" type="image/svg" href="/favicon.svg";
+                link rel="shortcut icon" href="/statics/favicon.svg" type="image/svg+xml";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 style {
@@ -213,7 +213,7 @@ fn render_post_form(current: Option<(&Post, &str)>, is_new: bool) -> Markup {
         div.row {
             div.column {
                 label for="raw_content" { "Raw Content" }
-                textarea name="raw_content" spellcheck="true" wrap="soft" placeholder="Your post content here.." {
+                textarea name="raw_content" spellcheck="true" lang="en" wrap="soft" placeholder="Your post content here.." {
                     @if let Some((_, c)) = current.as_ref() {
                         (c)
                     }

@@ -1,8 +1,9 @@
 mod views;
 
 use super::store::{Image, Post, Store};
-use crate::conversion;
 use crate::htmx::HtmxContext;
+use crate::statics::{get_favicon_ico_handler, get_static_handler};
+use crate::{conversion, statics};
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -30,6 +31,8 @@ impl Default for Config {
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/", get(home_handler))
+        .route(statics::FAVICON_ICO, get(get_favicon_ico_handler))
+        .route(statics::ROUTE, get(get_static_handler))
         .route("/images", get(list_images_handler))
         .route("/images", post(submit_image_handler))
         .route("/images/{slug}", get(get_image_handler))
