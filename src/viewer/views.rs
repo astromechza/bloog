@@ -21,7 +21,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                 meta name="author" content="Ben Meier";
                 meta name="keywords" content="golang, rust, distributed systems, programming, security";
                 meta name="viewport" content="width=device-width, initial-scale=1.0";
-                link rel="shortcut icon" href="/images/favicon.svg" type="image/svg+xml";
+                link rel="shortcut icon" href="/statics/favicon.svg" type="image/svg+xml";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 style nonce="123456789" {
@@ -166,12 +166,12 @@ pub(crate) fn get_index_page(
                         "Ben's Blog"
                     }
                     nav.column {
-                        img src="/images/bluesky.svg" alt="Bluesky logo";
+                        img src="/statics/bluesky.svg" alt="Bluesky logo";
                         a href="https://bsky.app/profile/ben.bsky.meierhost.com" target="_blank" {
                             "@ben.bsky.meierhost.com"
                         }
                         " | "
-                        img src="/images/github.svg" alt="Github logo";
+                        img src="/statics/github.svg" alt="Github logo";
                         a href="https://github.com/astromechza" target="_blank" {
                             "github/astromechza"
                         }

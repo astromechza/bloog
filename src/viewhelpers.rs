@@ -75,7 +75,7 @@ article a[href^="http"]::after {
   margin-left: 0.25em;
   margin-right: 0.1em;
   background-size: 100%;
-  background-image: url("/images/link.svg");
+  background-image: url("/statics/link.svg");
 }
 article a.hlink { color: darkslategrey; text-decoration: none; }
 article a.hlink:hover { text-decoration-line: underline; text-decoration-style: dotted; }
