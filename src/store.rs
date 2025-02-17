@@ -8,7 +8,7 @@ use bytes::Bytes;
 use chrono::NaiveDate;
 use futures::future::ready;
 use futures::stream::FuturesUnordered;
-use futures::{StreamExt, TryStreamExt};
+use futures::{StreamExt, TryFutureExt, TryStreamExt};
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::webp::WebPEncoder;
 use image::{DynamicImage, ImageReader};
@@ -17,10 +17,12 @@ use object_store::local::LocalFileSystem;
 use object_store::path::{Path, PathPart, DELIMITER};
 use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use std::io::Cursor;
 use std::slice::Iter;
 use std::str::from_utf8;
 use std::sync::Arc;
+use tracing::{info_span, instrument, Instrument};
 use url::Url;
 use xmlparser::Token;
 
@@ -121,6 +123,12 @@ impl Image {
     }
 }
 
+impl Display for Image {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_path_part().as_ref())
+    }
+}
+
 impl Default for Image {
     fn default() -> Self {
         Image::Webp { slug: Arc::from("") }
@@ -168,6 +176,7 @@ impl Store {
     }
 
     /// readyz checks whether we have read access to the underlying storage.
+    #[instrument(skip_all, err)]
     pub async fn readyz(&self) -> Result<(), Error> {
         self.os
             .list(Some(&self.sub_path.child("not-exist")))
@@ -176,11 +185,13 @@ impl Store {
         Ok(())
     }
 
+    #[instrument(skip_all, err)]
     pub async fn convert_html_with_validation(&self, content: &str) -> Result<(String, String), Error> {
         let valid_links = conversion::build_valid_links(&self.list_posts().await?, &self.list_images().await?);
         conversion::convert(content, &valid_links)
     }
 
+    #[instrument(skip_all, fields(slug = post.slug), err)]
     pub async fn upsert_post(&self, post: &Post, content: &str) -> Result<(String, String), Error> {
         PathPart::parse(post.slug.as_str())?;
         if !(3..100).contains(&post.slug.len()) {
@@ -213,7 +224,12 @@ impl Store {
         // write the tags concurrently
         FuturesUnordered::from_iter(post.labels.iter().map(|lbl| {
             let label_path = post_path.child("labels").child(lbl.clone()).to_owned();
-            async move { self.os.put_opts(&label_path, PutPayload::default(), PutOptions::default()).await }
+            async move {
+                self.os
+                    .put_opts(&label_path, PutPayload::default(), PutOptions::default())
+                    .instrument(info_span!("put", bytes = 0))
+                    .await
+            }
         }))
         .boxed()
         .try_collect::<Vec<_>>()
@@ -237,35 +253,45 @@ impl Store {
             .try_collect::<Vec<Path>>()
             .await?;
         for p in cleanup_paths {
-            self.os.delete(&p).await?;
+            self.os.delete(&p).instrument(info_span!("delete")).await?;
         }
         Ok((html_content, toc))
     }
 
+    #[instrument(skip_all, fields(prefix = %prefix), err)]
     async fn delete_paths_by_prefix(&self, prefix: &Path) -> Result<usize, Error> {
-        let paths = self.os.list(Some(prefix)).map_ok(|m| m.location).try_collect::<Vec<Path>>().await?;
+        let paths = self
+            .os
+            .list(Some(prefix))
+            .map_ok(|m| m.location)
+            .try_collect::<Vec<Path>>()
+            .instrument(info_span!("list"))
+            .await?;
         if paths.is_empty() {
             Err(Error::msg("not found"))
         } else {
             for p in &paths {
-                self.os.delete(p).await?;
+                self.os.delete(p).instrument(info_span!("delete")).await?;
             }
             Ok(paths.len())
         }
     }
 
+    #[instrument(skip_all, fields(slug = slug), err)]
     pub async fn delete_post(&self, slug: &str) -> Result<(), Error> {
         self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug))
             .await
             .map(|_| ())
     }
 
+    #[instrument(skip_all, fields(slug = slug), err)]
     async fn create_webp_image(&self, slug: &str, image: DynamicImage) -> Result<Image, Error> {
         let original_image = Image::Webp { slug: Arc::from(slug) };
         if self.check_image_exists(&original_image).await? {
             return Err(Error::msg("image slug already exists"));
         }
         let medium = if image.width() > Self::MEDIUM_VARIANT_WIDTH || image.height() > Self::MEDIUM_VARIANT_HEIGHT {
+            let _span = info_span!("resize_medium", width = image.width(), height = image.height());
             image
                 .resize(
                     Self::MEDIUM_VARIANT_WIDTH,
@@ -274,37 +300,53 @@ impl Store {
                 )
                 .into_rgb8()
         } else {
+            let _span = info_span!("clone_medium", width = image.width(), height = image.height());
             image.clone().into_rgb8()
         };
-        let thumbnail = image.thumbnail(Self::THUMB_VARIANT_WIDTH, Self::THUMB_VARIANT_HEIGHT).into_rgb8();
+        let thumbnail = {
+            let _span = info_span!("resize_thumbnail", width = image.width(), height = image.height());
+            image.thumbnail(Self::THUMB_VARIANT_WIDTH, Self::THUMB_VARIANT_HEIGHT).into_rgb8()
+        };
 
         let mut original_data = vec![];
-        image.write_with_encoder(WebPEncoder::new_lossless(&mut original_data))?;
+        {
+            let _span = info_span!("encode", format = "webp", width = image.width(), height = image.height());
+            image.write_with_encoder(WebPEncoder::new_lossless(&mut original_data))?;
+        }
         self.os
             .put(&original_image.resolve_full_path(&self.sub_path), PutPayload::from(original_data))
+            .instrument(info_span!("put"))
             .await?;
         let mut medium_data = vec![];
-
-        medium.write_with_encoder(JpegEncoder::new_with_quality(&mut medium_data, 90))?;
+        {
+            let _span = info_span!("encode", format = "jpeg", width = medium.width(), height = medium.height());
+            medium.write_with_encoder(JpegEncoder::new_with_quality(&mut medium_data, 90))?;
+        }
         self.os
             .put(
                 &original_image.to_medium().resolve_full_path(&self.sub_path),
                 PutPayload::from(medium_data),
             )
+            .instrument(info_span!("put"))
             .await?;
 
         let mut thumbnail_data = vec![];
-        thumbnail.write_with_encoder(JpegEncoder::new_with_quality(&mut thumbnail_data, 85))?;
+        {
+            let _span = info_span!("encode", format = "jpeg", width = thumbnail.width(), height = thumbnail.height());
+            thumbnail.write_with_encoder(JpegEncoder::new_with_quality(&mut thumbnail_data, 85))?;
+        }
         self.os
             .put(
                 &original_image.to_thumbnail().resolve_full_path(&self.sub_path),
                 PutPayload::from(thumbnail_data),
             )
+            .instrument(info_span!("put"))
             .await?;
 
         Ok(original_image)
     }
 
+    #[instrument(skip_all, fields(slug = slug))]
     async fn create_svg_image(&self, slug: &str, raw: &[u8]) -> Result<Image, Error> {
         let original_image = Image::Svg { slug: Arc::from(slug) };
         if self.check_image_exists(&original_image).await? {
@@ -323,10 +365,12 @@ impl Store {
         }
         self.os
             .put(&original_image.resolve_full_path(&self.sub_path), PutPayload::from(raw.to_vec()))
+            .instrument(info_span!("put", bytes = raw.len()))
             .await?;
         Ok(original_image)
     }
 
+    #[instrument(skip_all, fields(slug = slug))]
     pub async fn create_image(&self, slug: &str, raw: &[u8]) -> Result<Image, Error> {
         PathPart::parse(slug)?;
         if !(3..60).contains(&slug.len()) {
@@ -341,6 +385,7 @@ impl Store {
         }
     }
 
+    #[instrument(skip_all, fields(img = %img.as_ref()), err)]
     pub async fn delete_image(&self, img: impl AsRef<Image>) -> Result<(), Error> {
         let prefix_path = &self.sub_path.child("images").child(img.as_ref().to_original().to_path_part());
         self.delete_paths_by_prefix(prefix_path).await.and_then(|i| match i {
@@ -371,6 +416,7 @@ impl Store {
             .and_then(|b| postcard::from_bytes(&b).ok())
     }
 
+    #[instrument(skip_all, err)]
     pub async fn list_posts(&self) -> Result<Vec<Post>, Error> {
         let objects_paths: Vec<Path> = self
             .os
@@ -378,6 +424,7 @@ impl Store {
             .map_ok(|i| path_tail(&i.location, &self.sub_path))
             .boxed()
             .try_collect::<Vec<Path>>()
+            .instrument(info_span!("list"))
             .await?;
 
         // each path looks like images/... since we've removed the prefix path already
@@ -407,10 +454,17 @@ impl Store {
             .collect())
     }
 
+    #[instrument(skip_all, fields(slug = slug), err)]
     pub async fn get_post_raw(&self, slug: &str) -> Result<Option<(Post, String)>, Error> {
         let post_path = self.sub_path.child("posts").child(slug);
-        let content_bytes = match self.os.get(&post_path.child("content")).await {
-            Ok(gr) => gr.bytes().await?,
+        let content_bytes = match self
+            .os
+            .get(&post_path.child("content"))
+            .and_then(|gr| gr.bytes())
+            .instrument(info_span!("get"))
+            .await
+        {
+            Ok(b) => b,
             Err(object_store::Error::NotFound { .. }) => {
                 return Ok(None);
             }
@@ -423,6 +477,7 @@ impl Store {
             .map_ok(|i| path_tail(&i.location, &self.sub_path))
             .boxed()
             .try_collect::<Vec<Path>>()
+            .instrument(info_span!("list"))
             .await?;
         let post_paths_refs: Vec<&Path> = post_paths.iter().collect();
         let labels = Self::labels_from_paths(post_paths_refs.iter(), 0);
@@ -443,11 +498,13 @@ impl Store {
         Ok(Some((post, content)))
     }
 
+    #[instrument(skip_all, err)]
     pub async fn list_images(&self) -> Result<Vec<Image>, Error> {
         Ok(self
             .os
             .list(Some(&self.sub_path.child("images")))
             .try_collect::<Vec<ObjectMeta>>()
+            .instrument(info_span!("list"))
             .await?
             .iter()
             .sorted_by(|a, b| a.last_modified.cmp(&b.last_modified).reverse())
@@ -460,24 +517,32 @@ impl Store {
             .collect_vec())
     }
 
+    #[instrument(skip_all, fields(img = %img.as_ref()), err)]
     pub async fn check_image_exists(&self, img: impl AsRef<Image>) -> Result<bool, Error> {
         let p = &self.sub_path;
-        match self.os.head(&img.as_ref().resolve_full_path(p)).await {
+        match self
+            .os
+            .head(&img.as_ref().resolve_full_path(p))
+            .instrument(info_span!("head"))
+            .await
+        {
             Ok(_) => Ok(true),
             Err(object_store::Error::NotFound { .. }) => Ok(false),
             Err(e) => Err(e.into()),
         }
     }
 
+    #[instrument(skip_all, fields(img = %img.as_ref()), err)]
     pub async fn get_image_raw(&self, img: impl AsRef<Image>) -> Result<Option<Bytes>, Error> {
         let p = &self.sub_path;
-        match self.os.get(&img.as_ref().resolve_full_path(p)).await {
+        match self.os.get(&img.as_ref().resolve_full_path(p)).instrument(info_span!("get")).await {
             Ok(gr) => Ok(Some(gr.bytes().await?)),
             Err(object_store::Error::NotFound { .. }) => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
 
+    #[instrument(skip_all, err)]
     pub async fn list_object_meta(&self) -> Result<Vec<ObjectMeta>, Error> {
         Ok(self
             .os
@@ -488,6 +553,7 @@ impl Store {
             })
             .boxed()
             .try_collect::<Vec<ObjectMeta>>()
+            .instrument(info_span!("list"))
             .await?)
     }
 }

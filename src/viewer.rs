@@ -17,6 +17,7 @@ use maud::PreEscaped;
 use object_store::path::PathPart;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use tracing::instrument;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
 pub struct Config {
@@ -30,17 +31,7 @@ impl Default for Config {
 }
 
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
-    info!("Validating..");
-    let images = store.list_images().await?;
-    let posts = store.list_posts().await?;
-    let valid_links = conversion::build_valid_links(&posts, &images);
-    for (i, p) in posts.iter().enumerate() {
-        info!("Validating  {}/{} ({})", i + 1, posts.len(), p.slug);
-        if let Some((_, raw)) = store.get_post_raw(p.slug.as_ref()).await? {
-            convert(raw.as_ref(), &valid_links)?;
-        }
-    }
-    info!("Done. Starting server..");
+    validate(&store).await?;
     let app = Router::new()
         .route("/", get(index_handler))
         .route(statics::FAVICON_ICO, get(get_favicon_ico_handler))
@@ -53,6 +44,20 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .with_state(Arc::new(store));
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
     axum::serve(listener, app).await?;
+    Ok(())
+}
+
+#[instrument(skip_all, err)]
+async fn validate(store: &Store) -> Result<(), anyhow::Error> {
+    let images = store.list_images().await?;
+    let posts = store.list_posts().await?;
+    let valid_links = conversion::build_valid_links(&posts, &images);
+    for (i, p) in posts.iter().enumerate() {
+        info!("Validating  {}/{} ({})", i + 1, posts.len(), p.slug);
+        if let Some((_, raw)) = store.get_post_raw(p.slug.as_ref()).await? {
+            convert(raw.as_ref(), &valid_links)?;
+        }
+    }
     Ok(())
 }
 
