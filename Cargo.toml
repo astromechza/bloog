@@ -32,3 +32,5 @@ regex = "1.11.1"
 tracing = { version = "0.1.41" }
 tracing-subscriber = { version = "0.3.19" , features = ["env-filter"]}
 reqwest = "0.12.12"
+tower-http = { version = "0.6.2", default-features = false, features = ["trace"] }
+http = "1.2.0"

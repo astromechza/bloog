@@ -4,6 +4,7 @@ use maud::html;
 use pulldown_cmark::{html, BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
+use tracing::instrument;
 
 struct BrokenLinkTracker {
     tracker: Arc<Mutex<Option<anyhow::Error>>>,
@@ -46,6 +47,7 @@ pub fn build_valid_links(ps: &[Post], is: &[Image]) -> HashSet<String> {
         .collect::<HashSet<String>>()
 }
 
+#[instrument(skip_all, err)]
 pub fn convert(content: &str, valid_links: &HashSet<String>) -> Result<(String, String), anyhow::Error> {
     let (error_capture, parser) = pulldown_parser(content);
     let mut hn = HeadingChecker {

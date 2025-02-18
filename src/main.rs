@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use tokio::task::spawn_blocking;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, registry, EnvFilter};
+use tracing_subscriber::{fmt, registry, EnvFilter, Layer};
 use url::Url;
 
 // Define that crate htmx exists. The code can be found in the htmx file.
@@ -47,6 +47,9 @@ struct Args {
     #[arg(short, long, env = "BLOOG_PORT", default_value = "8080", help = "The HTTP port to listen on.")]
     port: usize,
 
+    #[arg(env = "BLOOG_HONEYCOMB_KEY")]
+    honeycomb_key: Option<String>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -62,34 +65,41 @@ enum Command {
 async fn main_err() -> Result<(), anyhow::Error> {
     let args = Args::try_parse()?;
 
-    let exporter = opentelemetry_otlp::SpanExporter::builder()
-        .with_http()
-        .with_endpoint("https://api.honeycomb.io/v1/traces")
-        .with_headers(HashMap::from([(
-            "x-honeycomb-team".to_string(),
-            "hcaik_01jkz58q8ekanbtj651waj3vaheegvzvx727nyb0vy9xjw3r44nb6bx39n".to_string(),
-        )]))
-        .with_timeout(std::time::Duration::from_secs(5))
-        .build()?;
+    let optional_tracer_provider = match &args.honeycomb_key {
+        Some(honeycomb_key) => {
+            let exporter = opentelemetry_otlp::SpanExporter::builder()
+                .with_http()
+                .with_endpoint("https://api.honeycomb.io/v1/traces")
+                .with_headers(HashMap::from([("x-honeycomb-team".to_string(), honeycomb_key.to_string())]))
+                .with_timeout(std::time::Duration::from_secs(5))
+                .build()?;
 
-    let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
-        .with_resource(
-            Resource::builder()
-                .with_attribute(KeyValue::new("crate.name", crate_name!()))
-                .with_attribute(KeyValue::new("crate.version", crate_version!()))
-                .with_detector(Box::new(TelemetryResourceDetector {}))
-                .with_detector(Box::new(SdkProvidedResourceDetector {}))
-                .with_detector(Box::new(EnvResourceDetector::new()))
-                .with_service_name(format!("bloog-{:?}", args.command))
-                .build(),
-        )
-        .build();
-    registry()
-        .with(EnvFilter::from_default_env())
-        .with(fmt::Layer::default())
-        .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer(format!("bloog-{:?}", args.command))))
-        .init();
+            let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_batch_exporter(exporter)
+                .with_resource(
+                    Resource::builder()
+                        .with_attribute(KeyValue::new("crate.name", crate_name!()))
+                        .with_attribute(KeyValue::new("crate.version", crate_version!()))
+                        .with_detector(Box::new(TelemetryResourceDetector {}))
+                        .with_detector(Box::new(SdkProvidedResourceDetector {}))
+                        .with_detector(Box::new(EnvResourceDetector::new()))
+                        .with_service_name(format!("bloog-{:?}", &args.command))
+                        .build(),
+                )
+                .build();
+            registry()
+                .with(EnvFilter::from_default_env())
+                .with(fmt::Layer::default().with_filter(EnvFilter::from_default_env()))
+                .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer(format!("bloog-{:?}", &args.command))))
+                .init();
+
+            Some(tracer_provider)
+        }
+        None => {
+            tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+            None
+        }
+    };
 
     let mut anonymous_url = args.store_url.clone();
     anonymous_url.set_query(None);
@@ -109,6 +119,8 @@ async fn main_err() -> Result<(), anyhow::Error> {
         Command::Editor => editor::run(editor::Config { port: args.port as u16 }, store).await?,
     }
 
-    spawn_blocking(move || tracer_provider.shutdown());
+    if let Some(tracer_provider) = optional_tracer_provider {
+        spawn_blocking(move || tracer_provider.shutdown());
+    }
     Ok(())
 }
