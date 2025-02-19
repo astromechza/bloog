@@ -17,6 +17,7 @@ use url::Url;
 
 // Define that crate htmx exists. The code can be found in the htmx file.
 mod conversion;
+mod customhttptrace;
 pub(crate) mod editor;
 pub(crate) mod htmx;
 pub(crate) mod path_utils;
