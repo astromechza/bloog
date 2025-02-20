@@ -3,7 +3,7 @@ mod views;
 use super::store::{Image, Post, Store};
 use crate::htmx::HtmxContext;
 use crate::statics::{get_favicon_ico_handler, get_static_handler};
-use crate::{conversion, statics};
+use crate::{conversion, customhttptrace, statics};
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -16,6 +16,7 @@ use object_store::path::PathPart;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tower_http::trace::TraceLayer;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
 pub struct Config {
@@ -48,7 +49,14 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/readyz", get(readyz_handler))
         .fallback(not_found_handler)
         .layer(DefaultBodyLimit::disable())
-        .with_state(Arc::new(store));
+        .with_state(Arc::new(store))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(customhttptrace::HttpTraceLayerHooks)
+                .on_request(customhttptrace::HttpTraceLayerHooks)
+                .on_response(customhttptrace::HttpTraceLayerHooks)
+                .on_failure(customhttptrace::HttpTraceLayerHooks),
+        );
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
     axum::serve(listener, app).await?;
     Ok(())

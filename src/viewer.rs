@@ -4,7 +4,7 @@ use crate::conversion::convert;
 use crate::htmx::HtmxContext;
 use crate::statics::{get_favicon_ico_handler, get_static_handler};
 use crate::store::{Image, Store};
-use crate::{conversion, statics};
+use crate::{conversion, customhttptrace, statics};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
@@ -17,6 +17,8 @@ use maud::PreEscaped;
 use object_store::path::PathPart;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use tower_http::trace::TraceLayer;
+use tracing::instrument;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
 pub struct Config {
@@ -30,17 +32,7 @@ impl Default for Config {
 }
 
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
-    info!("Validating..");
-    let images = store.list_images().await?;
-    let posts = store.list_posts().await?;
-    let valid_links = conversion::build_valid_links(&posts, &images);
-    for (i, p) in posts.iter().enumerate() {
-        info!("Validating  {}/{} ({})", i + 1, posts.len(), p.slug);
-        if let Some((_, raw)) = store.get_post_raw(p.slug.as_ref()).await? {
-            convert(raw.as_ref(), &valid_links)?;
-        }
-    }
-    info!("Done. Starting server..");
+    validate(&store).await?;
     let app = Router::new()
         .route("/", get(index_handler))
         .route(statics::FAVICON_ICO, get(get_favicon_ico_handler))
@@ -50,9 +42,32 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/livez", get(livez_handler))
         .route("/readyz", get(readyz_handler))
         .fallback(not_found_handler)
-        .with_state(Arc::new(store));
+        .with_state(Arc::new(store))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(customhttptrace::HttpTraceLayerHooks)
+                .on_request(customhttptrace::HttpTraceLayerHooks)
+                .on_response(customhttptrace::HttpTraceLayerHooks)
+                .on_failure(customhttptrace::HttpTraceLayerHooks),
+        );
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
     axum::serve(listener, app).await?;
+    Ok(())
+}
+
+#[instrument(skip_all, err)]
+async fn validate(store: &Store) -> Result<(), anyhow::Error> {
+    tracing::event!(tracing::Level::DEBUG, "starting post conversion validation");
+    let images = store.list_images().await?;
+    let posts = store.list_posts().await?;
+    let valid_links = conversion::build_valid_links(&posts, &images);
+    for (i, p) in posts.iter().enumerate() {
+        info!("Validating  {}/{} ({})", i + 1, posts.len(), p.slug);
+        if let Some((_, raw)) = store.get_post_raw(p.slug.as_ref()).await? {
+            convert(raw.as_ref(), &valid_links)?;
+        }
+    }
+    tracing::event!(tracing::Level::INFO, "post conversion validation complete");
     Ok(())
 }
 
