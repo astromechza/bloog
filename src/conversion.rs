@@ -26,7 +26,10 @@ fn pulldown_parser(content: &str) -> (Arc<Mutex<Option<anyhow::Error>>>, Parser<
         pulldown_cmark::Options::ENABLE_STRIKETHROUGH
             | pulldown_cmark::Options::ENABLE_DEFINITION_LIST
             | pulldown_cmark::Options::ENABLE_FOOTNOTES
-            | pulldown_cmark::Options::ENABLE_TABLES,
+            | pulldown_cmark::Options::ENABLE_TABLES
+            | pulldown_cmark::Options::ENABLE_SMART_PUNCTUATION
+            | pulldown_cmark::Options::ENABLE_SUBSCRIPT
+            | pulldown_cmark::Options::ENABLE_SUPERSCRIPT,
         Some(BrokenLinkTracker {
             tracker: error_capture.clone(),
         }),
@@ -211,6 +214,32 @@ impl HeadingChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_typog() {
+        let (content, _) = convert(
+            r"
+normal
+_italic_
+**bold**
+~sub~
+^sup^
+~~strike~~
+",
+            &HashSet::new(),
+        )
+        .unwrap_or_else(|e| (e.to_string(), String::new()));
+        assert_eq!(
+            content,
+            r##"<p>normal
+<em>italic</em>
+<strong>bold</strong>
+<sub>sub</sub>
+<sup>sup</sup>
+<del>strike</del></p>
+"##,
+        );
+    }
 
     #[test]
     fn test_bad_links() {
