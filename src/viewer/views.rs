@@ -24,6 +24,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                 link rel="shortcut icon" href="/statics/favicon.svg" type="image/svg+xml";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
+                link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin="anonymous" referrerpolicy="no-referrer";
                 style nonce="123456789" {
                     (PreEscaped(COMMON_CSS))
                     (PreEscaped(r#"
@@ -57,6 +58,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                     "#))
                 }
                 script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.min.js" integrity="sha512-2kIcAizYXhIn8TzUvqzEDZNuDZ+aW7yE/+f1HJHXFjQcGNfv1kqzJSTBRBSlOgp6B/KZsz1K0a3ZTqP9dnxioQ==" crossorigin="anonymous" referrerpolicy="no-referrer" {};
+                script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" crossorigin="anonymous" referrerpolicy="no-referrer" {};
             }
             body hx-boost="true" id="body" {
                 (body)
@@ -245,7 +247,6 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, toc: Markup, htmx_
                         }
                         (post.title)
                     }
-
                 }
                 section {
                     p.block.m-b-1 {
@@ -261,6 +262,9 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, toc: Markup, htmx_
                     article {
                         nav.toc { ul { (toc) } }
                         (content_html)
+                    }
+                    script {
+                        (PreEscaped(r"hljs.highlightAll();"))
                     }
                 }
             }
