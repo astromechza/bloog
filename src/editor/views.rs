@@ -229,7 +229,7 @@ fn render_post_form(current: Option<(&Post, &str)>, is_new: bool) -> Markup {
                 }
                 details {
                     summary { "Markdown Hints" }
-                    small { pre { r#"**bold** _italic_ ~strike~ ![alt](/link)
+                    small { pre { r#"**bold** _italic_ ~~strike~~ ~subscript~ ^superscript^ ![alt](/link)
 
 title 1
 : definition 1
