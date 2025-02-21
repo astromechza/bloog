@@ -228,7 +228,7 @@ _italic_
 ",
             &HashSet::new(),
         )
-            .unwrap_or_else(|e| (e.to_string(), String::new()));
+        .unwrap_or_else(|e| (e.to_string(), String::new()));
         assert_eq!(
             content,
             r##"<p>normal
