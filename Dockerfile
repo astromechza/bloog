@@ -1,6 +1,7 @@
 FROM rust:1 AS builder
 COPY Cargo.toml Cargo.lock /build/
 COPY src /build/src
+COPY statics /build/statics
 WORKDIR /build
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release
