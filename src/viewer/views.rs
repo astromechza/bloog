@@ -161,18 +161,19 @@ pub(crate) fn get_index_page(
         html! {
             main.container {
                 header.row.m-b-05 {
-                    h1.column {
+                    h1.column style="max-width: none" {
                         a href="/" title="Back to index" {
                             "/ "
                         }
                         "Ben's Blog"
                     }
-                    nav.column {
+                    div.column style="flex: 0 0 auto" {
                         img src="/statics/bluesky.svg" alt="Bluesky logo";
                         a href="https://bsky.app/profile/ben.bsky.meierhost.com" target="_blank" {
                             "@ben.bsky.meierhost.com"
                         }
-                        " | "
+                    }
+                    div.column style="flex: 0 0 auto" {
                         img src="/statics/github.svg" alt="Github logo";
                         a href="https://github.com/astromechza" target="_blank" {
                             "github/astromechza"
@@ -180,7 +181,7 @@ pub(crate) fn get_index_page(
                     }
                 }
                 section {
-                    p.block {
+                    p.block style="font-size: smaller" {
                         r#"
                         I'm a software engineer working mostly on distributed systems with an interest in security, networking, correctness, and chaos.
                         All opinions expressed here are my own.
