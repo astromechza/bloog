@@ -43,17 +43,24 @@ pub(crate) fn render_body_html_or_htmx(
 }
 
 pub(crate) const COMMON_CSS: &str = r###"
+:root {
+--main-bg-colour: rgb(255, 252, 240);
+--main-tx-colour: rgb(16, 15, 15);
+--main-a-colour: rgb(67, 133, 190);
+--main-font: 'Verdana', sans-serif;
+}
+
 html, body { height: 100% }
-body { display: flex; flex-direction: column; }
+body { display: flex; flex-direction: column; font-family: var(--main-font); }
 pre code { display: block; white-space: pre-wrap; }
 ul { list-style: circle outside; }
 ul li { margin-left: 1em; }
-body { background-color: floralwhite; }
+body { background-color: var(--main-bg-colour); }
 .footnote-definition { margin-bottom: 2em; }
 .footnote-definition p { display: inline; }
 .container {
-  color: darkslategrey;
-  font-family: 'Verdana', sans-serif;
+  color: var(--main-tx-colour);
+  font-family: var(--main-font);
   font-size: 1em;
   font-weight: 300;
   letter-spacing: .01em;
@@ -62,6 +69,9 @@ body { background-color: floralwhite; }
 
 header h1 { font-size: 3.6rem; }
 
+a {
+  color: var(--main-a-colour);
+}
 article a {
   text-decoration-line: underline;
   text-decoration-style: dotted;
@@ -77,7 +87,7 @@ article a[href^="http"]::after {
   background-size: 100%;
   background-image: url("/statics/link.svg");
 }
-article a.hlink { color: darkslategrey; text-decoration: none; }
+article a.hlink { color: var(--main-tx-colour); text-decoration: none; }
 article a.hlink:hover { text-decoration-line: underline; text-decoration-style: dotted; }
 
 article img:not([src$=".svg"]) {

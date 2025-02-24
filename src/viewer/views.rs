@@ -52,7 +52,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                     }
                     hr {
                         border: 0;
-                        border-top: 0.1rem dotted darkslategrey;
+                        border-top: 0.1rem dotted var(--main-tx-colour);
                         margin: 3.0rem 0;
                     }
                     "#))
@@ -200,13 +200,16 @@ pub(crate) fn get_index_page(
                     }
                     nav {
                         @for (y, g) in year_groups {
+                            h3 { (y) }
                             ul.index-nav-ul {
-                                h2 { (y) }
                                 @for p in g {
                                     li {
                                         a href={ "/posts/" (&p.slug) } {
-                                            time datetime=(&p.date.format(RFC3339_DATE_FORMAT).to_string()) { (&p.date.format("%e %B").to_string()) }
-                                            ": " (&p.title)
+                                            time datetime=(&p.date.format(RFC3339_DATE_FORMAT).to_string()) {
+                                                (&p.date.format("%d %b").to_string())
+                                            }
+                                            ": "
+                                            (&p.title)
                                         }
                                         @if !p.labels.is_empty() {
                                             small {
