@@ -41,7 +41,6 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                     .m-b-05 { margin-bottom: 0.5em; }
                     .m-b-1 { margin-bottom: 1em; }
                     main.container {
-                      max-width: 100rem;
                       margin: 2em auto 0;
                       flex-grow: 1;
                     }

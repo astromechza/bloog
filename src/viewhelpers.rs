@@ -59,6 +59,7 @@ body { background-color: var(--main-bg-colour); }
 .footnote-definition { margin-bottom: 2em; }
 .footnote-definition p { display: inline; }
 .container {
+  max-width: 100rem;
   color: var(--main-tx-colour);
   font-family: var(--main-font);
   font-size: 1em;
@@ -98,6 +99,9 @@ article h2 { font-size: 2.7rem; }
 article h3 { font-size: 2.2rem; }
 article h4 { font-size: 1.8rem; }
 article h5 { font-size: 1.6rem; }
+
+article > ol > li > p { display: inline; }
+article > ul > li > p { display: inline; }
 
 nav.toc ul { font-size: 1.4rem; list-style: none; }
 nav.toc .toc-l1 { margin-left: 0; }
