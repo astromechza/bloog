@@ -59,6 +59,7 @@ body { background-color: var(--main-bg-colour); }
 .footnote-definition { margin-bottom: 2em; }
 .footnote-definition p { display: inline; }
 .container {
+  max-width: 100rem;
   color: var(--main-tx-colour);
   font-family: var(--main-font);
   font-size: 1em;
