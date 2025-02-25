@@ -99,6 +99,9 @@ article h3 { font-size: 2.2rem; }
 article h4 { font-size: 1.8rem; }
 article h5 { font-size: 1.6rem; }
 
+article > ol > li > p { display: inline; }
+article > ul > li > p { display: inline; }
+
 nav.toc ul { font-size: 1.4rem; list-style: none; }
 nav.toc .toc-l1 { margin-left: 0; }
 nav.toc .toc-l2 { margin-left: 2rem; }
