@@ -87,7 +87,11 @@ where
 }
 
 async fn not_found_handler(method: Method, uri: Uri, headers: HeaderMap) -> Result<Response, ResponseError> {
-    Ok(views::not_found_page(method, uri, HtmxContext::try_from(&headers).map(Box::new).ok()))
+    Ok(views::not_found_page(
+        method,
+        uri,
+        HtmxContext::try_from(&headers).map(Box::new).ok(),
+    ))
 }
 
 async fn home_handler(headers: HeaderMap) -> Result<Response, ResponseError> {
@@ -195,7 +199,11 @@ async fn edit_post_handler(
                 htmx_context,
             )),
         },
-        None => Ok(views::not_found_page(Method::GET, uri, HtmxContext::try_from(&headers).map(Box::new).ok())),
+        None => Ok(views::not_found_page(
+            Method::GET,
+            uri,
+            HtmxContext::try_from(&headers).map(Box::new).ok(),
+        )),
     }
 }
 
