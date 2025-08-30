@@ -41,6 +41,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/images/{slug}", get(get_image_handler))
         .route("/livez", get(livez_handler))
         .route("/readyz", get(readyz_handler))
+        .route("/robots.txt", get(robots_handler))
         .fallback(not_found_handler)
         .with_state(Arc::new(store))
         .layer(
@@ -164,4 +165,42 @@ async fn livez_handler() -> Response {
 async fn readyz_handler(State(store): State<Arc<Store>>) -> Result<Response, ResponseError> {
     store.readyz().await.map_resp_err(&None)?;
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+const ROBOTS_TXT: &str = r#"# Modern robots.txt for blog - 2025
+# Place this file at https://yourdomain.com/robots.txt
+
+User-agent: *
+Allow: /
+Crawl-delay: 1
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+"#;
+
+async fn robots_handler() -> Response {
+    let mut hm = HeaderMap::new();
+    hm.insert("Content-Type", HeaderValue::from_static("text/plain"));
+    (StatusCode::OK, hm, ROBOTS_TXT).into_response()
 }
