@@ -72,7 +72,7 @@ async fn validate(store: &Store) -> Result<(), anyhow::Error> {
 }
 
 #[derive(Debug)]
-struct ResponseError(anyhow::Error, Option<HtmxContext>);
+struct ResponseError(anyhow::Error, Option<Box<HtmxContext>>);
 
 impl IntoResponse for ResponseError {
     fn into_response(self) -> Response {
@@ -83,20 +83,20 @@ impl IntoResponse for ResponseError {
 /// This trait helps to attach the [HtmxContext] to the [Result] and convert any old error into
 /// a [ResponseError]. We implement this internal trait for any [Result] type.
 trait CanMapToRespErr<T> {
-    fn map_resp_err(self, htmx: &Option<HtmxContext>) -> Result<T, ResponseError>;
+    fn map_resp_err(self, htmx: &Option<Box<HtmxContext>>) -> Result<T, ResponseError>;
 }
 
 impl<T, E> CanMapToRespErr<T> for Result<T, E>
 where
     E: Into<anyhow::Error>,
 {
-    fn map_resp_err(self, htmx: &Option<HtmxContext>) -> Result<T, ResponseError> {
+    fn map_resp_err(self, htmx: &Option<Box<HtmxContext>>) -> Result<T, ResponseError> {
         self.map_err(|e| ResponseError(e.into(), htmx.clone()))
     }
 }
 
 async fn not_found_handler(uri: Uri, headers: HeaderMap) -> Response {
-    views::not_found_page(uri, HtmxContext::try_from(&headers).ok()).into_response()
+    views::not_found_page(uri, HtmxContext::try_from(&headers).map(Box::new).ok()).into_response()
 }
 
 async fn get_image_handler(
@@ -131,7 +131,7 @@ async fn index_handler(
     query: Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let label_filter = query.get("label");
     let mut posts = store.list_posts().await.map_resp_err(&htmx_context)?;
     posts.retain_mut(|p| p.published && label_filter.as_ref().is_none_or(|l| p.labels.contains(l)));
@@ -148,7 +148,7 @@ async fn get_post_handler(
     uri: Uri,
     Path(slug): Path<String>,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     if let Some((post, content)) = store.get_post_raw(&slug).await.map_resp_err(&htmx_context)? {
         let (content_html, toc) = convert(content.as_str(), &HashSet::default()).map_resp_err(&htmx_context)?;
         Ok(views::get_post_page(post, PreEscaped(content_html), PreEscaped(toc), htmx_context).into_response())

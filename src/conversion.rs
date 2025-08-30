@@ -19,7 +19,7 @@ impl<'input> BrokenLinkCallback<'input> for BrokenLinkTracker {
     }
 }
 
-fn pulldown_parser(content: &str) -> (Arc<Mutex<Option<anyhow::Error>>>, Parser<BrokenLinkTracker>) {
+fn pulldown_parser(content: &str) -> (Arc<Mutex<Option<anyhow::Error>>>, Parser<'_, BrokenLinkTracker>) {
     let error_capture = Arc::new(Mutex::new(None::<anyhow::Error>));
     let parser = Parser::new_with_broken_link_callback(
         content,

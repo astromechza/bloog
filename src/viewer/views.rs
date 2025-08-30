@@ -77,7 +77,7 @@ lazy_static! {
     };
 }
 
-pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
+pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<Box<HtmxContext>>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::INTERNAL_SERVER_ERROR,
         "Internal Error",
@@ -118,7 +118,7 @@ pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxC
     )
 }
 
-pub(crate) fn not_found_page(uri: Uri, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
+pub(crate) fn not_found_page(uri: Uri, htmx_context: Option<Box<HtmxContext>>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::NOT_FOUND,
         "Not Found",
@@ -152,7 +152,7 @@ pub(crate) fn not_found_page(uri: Uri, htmx_context: Option<HtmxContext>) -> imp
 pub(crate) fn get_index_page(
     label_filter: Option<String>,
     year_groups: Vec<(&i32, &Vec<&Post>)>,
-    htmx_context: Option<HtmxContext>,
+    htmx_context: Option<Box<HtmxContext>>,
 ) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::OK,
@@ -237,7 +237,7 @@ pub(crate) fn get_index_page(
     ).into_response()
 }
 
-pub(crate) fn get_post_page(post: Post, content_html: Markup, toc: Markup, htmx_context: Option<HtmxContext>) -> impl IntoResponse {
+pub(crate) fn get_post_page(post: Post, content_html: Markup, toc: Markup, htmx_context: Option<Box<HtmxContext>>) -> impl IntoResponse {
     render_body_html_or_htmx(
         StatusCode::OK,
         post.title.as_str(),

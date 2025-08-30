@@ -60,7 +60,7 @@ pub(crate) fn render_body_html_or_htmx(
     code: StatusCode,
     title: impl AsRef<str>,
     inner: Markup,
-    htmx_context: Option<HtmxContext>,
+    htmx_context: Option<Box<HtmxContext>>,
 ) -> Response {
     let mut hm = HeaderMap::new();
     hm.insert("Content-Type", HeaderValue::from_static("text/html"));
@@ -87,7 +87,7 @@ pub(crate) fn render_body_html_or_htmx(
     }
 }
 
-pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<Box<HtmxContext>>) -> Response {
     render_body_html_or_htmx(
         StatusCode::INTERNAL_SERVER_ERROR,
         "Internal Error",
@@ -109,7 +109,7 @@ pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<HtmxC
     )
 }
 
-pub(crate) fn not_found_page(method: Method, uri: Uri, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn not_found_page(method: Method, uri: Uri, htmx_context: Option<Box<HtmxContext>>) -> Response {
     render_body_html_or_htmx(
         StatusCode::NOT_FOUND,
         "Not Found",
@@ -128,7 +128,7 @@ pub(crate) fn not_found_page(method: Method, uri: Uri, htmx_context: Option<Htmx
     )
 }
 
-pub(crate) fn list_posts_page(posts: Vec<Post>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn list_posts_page(posts: Vec<Post>, htmx_context: Option<Box<HtmxContext>>) -> Response {
     render_body_html_or_htmx(
         StatusCode::OK,
         "Posts",
@@ -247,7 +247,7 @@ Footnote referenced [^1].
     }
 }
 
-pub(crate) fn new_posts_page(post: Option<(&Post, &str)>, error: Option<String>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn new_posts_page(post: Option<(&Post, &str)>, error: Option<String>, htmx_context: Option<Box<HtmxContext>>) -> Response {
     render_body_html_or_htmx(
         StatusCode::OK,
         "New post",
@@ -274,7 +274,7 @@ pub(crate) fn edit_posts_page(
     html_content: Markup,
     toc_content: Markup,
     error: Option<String>,
-    htmx_context: Option<HtmxContext>,
+    htmx_context: Option<Box<HtmxContext>>,
 ) -> Response {
     render_body_html_or_htmx(
         StatusCode::OK,
@@ -303,7 +303,7 @@ pub(crate) fn edit_posts_page(
     )
 }
 
-pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<Box<HtmxContext>>) -> Response {
     render_body_html_or_htmx(
         StatusCode::OK,
         "Debug",
@@ -340,7 +340,7 @@ pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<
     )
 }
 
-pub(crate) fn list_images_page(images: Vec<Image>, error: Option<Error>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn list_images_page(images: Vec<Image>, error: Option<Error>, htmx_context: Option<Box<HtmxContext>>) -> Response {
     render_body_html_or_htmx(
         StatusCode::OK,
         "Images",
@@ -414,7 +414,7 @@ pub(crate) fn list_images_page(images: Vec<Image>, error: Option<Error>, htmx_co
     )
 }
 
-pub(crate) fn get_image_page(image: impl AsRef<Image>, htmx_context: Option<HtmxContext>) -> Response {
+pub(crate) fn get_image_page(image: impl AsRef<Image>, htmx_context: Option<Box<HtmxContext>>) -> Response {
     let original_path = image.as_ref().to_path_part();
     render_body_html_or_htmx(
         StatusCode::OK,

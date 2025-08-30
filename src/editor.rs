@@ -63,7 +63,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
 }
 
 #[derive(Debug)]
-struct ResponseError(anyhow::Error, Option<HtmxContext>);
+struct ResponseError(anyhow::Error, Option<Box<HtmxContext>>);
 
 impl IntoResponse for ResponseError {
     fn into_response(self) -> Response {
@@ -74,24 +74,28 @@ impl IntoResponse for ResponseError {
 /// This trait helps to attach the [HtmxContext] to the [Result] and convert any old error into
 /// a [ResponseError]. We implement this internal trait for any [Result] type.
 trait CanMapToRespErr<T> {
-    fn map_resp_err(self, htmx: &Option<HtmxContext>) -> Result<T, ResponseError>;
+    fn map_resp_err(self, htmx: &Option<Box<HtmxContext>>) -> Result<T, ResponseError>;
 }
 
 impl<T, E> CanMapToRespErr<T> for Result<T, E>
 where
     E: Into<anyhow::Error>,
 {
-    fn map_resp_err(self, htmx: &Option<HtmxContext>) -> Result<T, ResponseError> {
+    fn map_resp_err(self, htmx: &Option<Box<HtmxContext>>) -> Result<T, ResponseError> {
         self.map_err(|e| ResponseError(e.into(), htmx.clone()))
     }
 }
 
 async fn not_found_handler(method: Method, uri: Uri, headers: HeaderMap) -> Result<Response, ResponseError> {
-    Ok(views::not_found_page(method, uri, HtmxContext::try_from(&headers).ok()))
+    Ok(views::not_found_page(
+        method,
+        uri,
+        HtmxContext::try_from(&headers).map(Box::new).ok(),
+    ))
 }
 
 async fn home_handler(headers: HeaderMap) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     if htmx_context.is_none() {
         Ok(Redirect::to("/posts").into_response())
     } else {
@@ -102,7 +106,7 @@ async fn home_handler(headers: HeaderMap) -> Result<Response, ResponseError> {
 }
 
 async fn posts_handler(headers: HeaderMap, State(store): State<Arc<Store>>) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let mut posts = store.list_posts().await.map_resp_err(&htmx_context)?;
     posts.sort();
     posts.reverse();
@@ -110,7 +114,7 @@ async fn posts_handler(headers: HeaderMap, State(store): State<Arc<Store>>) -> R
 }
 
 async fn new_post_handler(headers: HeaderMap) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     Ok(views::new_posts_page(None, None, htmx_context))
 }
 
@@ -129,7 +133,7 @@ async fn submit_new_post_handler(
     headers: HeaderMap,
     Form(form): Form<NewPostForm>,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let temporary_post = Post {
         date: form.date,
         slug: form.slug.clone(),
@@ -175,7 +179,7 @@ async fn edit_post_handler(
     headers: HeaderMap,
     State(store): State<Arc<Store>>,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     match store.get_post_raw(&id).await.map_resp_err(&htmx_context)? {
         Some((post, raw_content)) => match conversion::convert(raw_content.as_str(), &HashSet::new()) {
             Ok((html_output, toc)) => Ok(views::edit_posts_page(
@@ -195,7 +199,11 @@ async fn edit_post_handler(
                 htmx_context,
             )),
         },
-        None => Ok(views::not_found_page(Method::GET, uri, HtmxContext::try_from(&headers).ok())),
+        None => Ok(views::not_found_page(
+            Method::GET,
+            uri,
+            HtmxContext::try_from(&headers).map(Box::new).ok(),
+        )),
     }
 }
 
@@ -214,7 +222,7 @@ async fn submit_edit_post_handler(
     Path(slug): Path<String>,
     Form(form): Form<EditPostForm>,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let temporary_post = Post {
         date: form.date,
         slug: slug.clone(),
@@ -240,7 +248,7 @@ async fn submit_edit_post_handler(
     ))
 }
 
-fn redirect_response(to: &str, htmx_context: Option<HtmxContext>) -> Result<Response, ResponseError> {
+fn redirect_response(to: &str, htmx_context: Option<Box<HtmxContext>>) -> Result<Response, ResponseError> {
     match htmx_context {
         None => Ok(Redirect::to(to).into_response()),
         Some(_) => {
@@ -256,19 +264,19 @@ async fn submit_delete_post_handler(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     store.delete_post(slug.as_str()).await.map_resp_err(&htmx_context)?;
     redirect_response("/posts", htmx_context)
 }
 
 async fn debug_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let objects = store.list_object_meta().await.map_resp_err(&htmx_context)?;
     Ok(views::debug_objects_page(objects, htmx_context).into_response())
 }
 
 async fn list_images_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let images = store.list_images().await.map_resp_err(&htmx_context)?;
     Ok(views::list_images_page(images, None, htmx_context).into_response())
 }
@@ -278,7 +286,7 @@ async fn submit_image_handler(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let error: Option<anyhow::Error> = match multipart.next_field().await.map_resp_err(&htmx_context)? {
         Some(f) if f.name().is_some_and(|x| x == "slug") => {
             let pre_slug = f.text().await.map_resp_err(&htmx_context)?;
@@ -302,7 +310,7 @@ async fn get_image_handler(
     url: Uri,
     Path(slug): Path<String>,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
 
     let can_html = htmx_context.is_some()
         || headers
@@ -331,7 +339,7 @@ async fn submit_delete_image_handler(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Response, ResponseError> {
-    let htmx_context = HtmxContext::try_from(&headers).ok();
+    let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let img = Image::try_from_path_part(PathPart::from(slug)).unwrap_or_default();
     store.delete_image(&img).await.map_resp_err(&htmx_context)?;
     redirect_response("/images", htmx_context)

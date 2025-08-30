@@ -86,7 +86,7 @@ impl Image {
         }
     }
 
-    pub fn to_path_part(&self) -> PathPart {
+    pub fn to_path_part(&self) -> PathPart<'_> {
         match self {
             Image::Svg { slug } => PathPart::from(format!("{}.svg", slug)),
             Image::Webp { slug } => PathPart::from(format!("{}.webp", slug)),
