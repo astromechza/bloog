@@ -175,14 +175,15 @@ impl Store {
         }
     }
 
-    /// readyz checks whether we have read access to the underlying storage.
+    /// readyz checks whether we have access to the underlying storage. We use a delete 404 here
+    /// because delete requests are generally free.
     #[instrument(skip_all, err)]
     pub async fn readyz(&self) -> Result<(), Error> {
-        self.os
-            .list(Some(&self.sub_path.child("not-exist")))
-            .try_fold(0, |acc, _| async move { Ok(acc + 1) })
-            .await?;
-        Ok(())
+        match self.os.delete(&self.sub_path.child("not-exists")).await {
+            Ok(_) => Ok(()),
+            Err(object_store::Error::NotFound { .. }) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
     }
 
     #[instrument(skip_all, err)]
