@@ -39,3 +39,11 @@ export BLOOG_STORE_URL='--store-url s3://<bucket>?access_key_id=<key id>&secret_
 bloog --port 8081 editor
 bloog --port 8080 viewer
 ```
+
+Releasing a new version:
+
+1. Update the version in [Cargo.toml](Cargo.toml).
+2. Run `cargo build` or otherwise allow the Cargo.lock to be updated.
+3. Push as a PR against main.
+
+Best to do this as part of major PRs.
