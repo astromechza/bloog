@@ -219,7 +219,7 @@ fn render_post_form(current: Option<(&Post, &str)>, is_new: bool) -> Markup {
                     }
                 }
                 button type="submit" { "Submit" }
-                a.button.button-clear href="/posts" { "Cancel" }
+                a.button.button-clear href="/posts" hx-confirm="Are you sure you want to cancel your changes?" { "Cancel" }
                 @if let Some((c, _)) = current.as_ref() {
                     @if !is_new {
                         form action={"/posts/" (c.slug)} hx-confirm="Are you sure you want to delete this post?" method="delete" style="display: inline" hx-disabled-elt="find input, find button, find textarea" {
