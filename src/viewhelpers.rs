@@ -9,7 +9,7 @@ pub(crate) fn render_body_html_or_htmx(
     title: impl AsRef<str>,
     inner: Markup,
     outer: fn(&str, Markup) -> Markup,
-    htmx_context: Option<HtmxContext>,
+    htmx_context: Option<Box<HtmxContext>>,
 ) -> impl IntoResponse {
     let mut hm = HeaderMap::new();
     hm.insert("Content-Type", HeaderValue::from_static("text/html"));
