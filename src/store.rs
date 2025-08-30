@@ -175,11 +175,13 @@ impl Store {
         }
     }
 
-    /// readyz checks whether we have access to the underlying storage. We use a delete 404 here
-    /// because delete requests are generally free.
+    /// readyz checks whether we have access to the underlying storage. We use a get and expect a
+    /// 404. Get is 10x cheaper than a list/put. Although not as cheap as delete which is usually
+    /// free. However, I don't want to use delete because it's not read only. Instead, I'll reduce
+    /// the healthcheck interval in the k8s pod.
     #[instrument(skip_all, err)]
     pub async fn readyz(&self) -> Result<(), Error> {
-        match self.os.delete(&self.sub_path.child("not-exists")).await {
+        match self.os.head(&self.sub_path.child("not-exists")).await {
             Ok(_) => Ok(()),
             Err(object_store::Error::NotFound { .. }) => Ok(()),
             Err(e) => Err(e.into()),
