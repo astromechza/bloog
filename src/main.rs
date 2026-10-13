@@ -8,6 +8,7 @@ use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector};
 use std::collections::HashMap;
+use std::process::ExitCode;
 use tokio::task::spawn_blocking;
 use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
@@ -27,9 +28,13 @@ mod viewer;
 mod viewhelpers;
 
 #[tokio::main]
-async fn main() {
-    if let Err(e) = main_err().await {
-        eprintln!("{}", e);
+async fn main() -> ExitCode {
+    match main_err().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{:#}", e);
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -46,7 +51,7 @@ struct Args {
     store_url: Url,
 
     #[arg(short, long, env = "BLOOG_PORT", default_value = "8080", help = "The HTTP port to listen on.")]
-    port: usize,
+    port: u16,
 
     #[arg(env = "BLOOG_HONEYCOMB_KEY")]
     honeycomb_key: Option<String>,
@@ -64,7 +69,8 @@ enum Command {
 }
 
 async fn main_err() -> Result<(), anyhow::Error> {
-    let args = Args::try_parse()?;
+    // parse() prints help, version and usage errors itself and exits with the right code.
+    let args = Args::parse();
 
     let optional_tracer_provider = match &args.honeycomb_key {
         Some(honeycomb_key) => {
@@ -117,8 +123,8 @@ async fn main_err() -> Result<(), anyhow::Error> {
 
     info!("Starting {:?}..", args.command);
     let result = match args.command {
-        Command::Viewer => viewer::run(viewer::Config { port: args.port as u16 }, store).await,
-        Command::Editor => editor::run(editor::Config { port: args.port as u16 }, store).await,
+        Command::Viewer => viewer::run(viewer::Config { port: args.port }, store).await,
+        Command::Editor => editor::run(editor::Config { port: args.port }, store).await,
     };
 
     // Flush any buffered spans before exiting, regardless of how the server stopped.
@@ -155,4 +161,16 @@ pub(crate) async fn shutdown_signal() {
         _ = terminate => {},
     }
     info!("Shutdown signal received..");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_port_must_fit_u16() {
+        let parse = |port: &str| Args::try_parse_from(["bloog", "--store-url", "file:///tmp/x", "--port", port, "viewer"]);
+        assert!(parse("8080").is_ok_and(|a| a.port == 8080));
+        assert!(parse("70000").is_err());
+    }
 }
