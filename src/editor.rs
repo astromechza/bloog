@@ -1,3 +1,4 @@
+mod mcp;
 mod views;
 
 use super::store::{Image, Post, Store};
