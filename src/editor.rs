@@ -4,11 +4,13 @@ use super::store::{Image, Post, Store};
 use crate::htmx::HtmxContext;
 use crate::statics::{get_favicon_ico_handler, get_static_handler};
 use crate::{conversion, customhttptrace, statics};
+use axum::extract::multipart::MultipartError;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post};
 use axum::{Form, Router};
+use bytes::Bytes;
 use chrono::NaiveDate;
 use image::EncodableLayout;
 use maud::PreEscaped;
@@ -29,6 +31,9 @@ impl Default for Config {
     }
 }
 
+/// Large enough for full resolution photos, small enough that a mistaken upload cannot exhaust memory.
+const MAX_UPLOAD_BYTES: usize = 64 * 1024 * 1024;
+
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/", get(home_handler))
@@ -48,7 +53,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/livez", get(livez_handler))
         .route("/readyz", get(readyz_handler))
         .fallback(not_found_handler)
-        .layer(DefaultBodyLimit::disable())
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
         .with_state(Arc::new(store))
         .layer(
             TraceLayer::new_for_http()
@@ -58,7 +63,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
                 .on_failure(customhttptrace::HttpTraceLayerHooks),
         );
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app).with_graceful_shutdown(crate::shutdown_signal()).await?;
     Ok(())
 }
 
@@ -118,6 +123,11 @@ async fn new_post_handler(headers: HeaderMap) -> Result<Response, ResponseError>
     Ok(views::new_posts_page(None, None, htmx_context))
 }
 
+/// Splits the comma separated labels from the post forms, ignoring surrounding whitespace and empty entries.
+fn parse_labels(raw: &str) -> Vec<String> {
+    raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct NewPostForm {
     slug: String,
@@ -139,11 +149,7 @@ async fn submit_new_post_handler(
         slug: form.slug.clone(),
         title: form.title,
         published: form.published.unwrap_or_default(),
-        labels: form
-            .labels
-            .split(",")
-            .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
-            .collect(),
+        labels: parse_labels(&form.labels),
     };
     if store.get_post_raw(form.slug.as_str()).await.map_resp_err(&htmx_context)?.is_some() {
         return Ok(views::new_posts_page(
@@ -228,11 +234,7 @@ async fn submit_edit_post_handler(
         slug: slug.clone(),
         title: form.title,
         published: form.published.unwrap_or_default(),
-        labels: form
-            .labels
-            .split(",")
-            .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
-            .collect(),
+        labels: parse_labels(&form.labels),
     };
     let ((html_content, toc), error) = match store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
         Err(e) => ((String::new(), String::new()), Some(e.to_string())),
@@ -278,30 +280,46 @@ async fn debug_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> R
 async fn list_images_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let images = store.list_images().await.map_resp_err(&htmx_context)?;
-    Ok(views::list_images_page(images, None, htmx_context).into_response())
+    Ok(views::list_images_page(StatusCode::OK, images, None, htmx_context))
 }
 
 async fn submit_image_handler(
     State(store): State<Arc<Store>>,
     headers: HeaderMap,
-    mut multipart: Multipart,
+    multipart: Multipart,
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
-    let error: Option<anyhow::Error> = match multipart.next_field().await.map_resp_err(&htmx_context)? {
-        Some(f) if f.name().is_some_and(|x| x == "slug") => {
-            let pre_slug = f.text().await.map_resp_err(&htmx_context)?;
-            match multipart.next_field().await.map_resp_err(&htmx_context)? {
-                Some(f) if f.name().is_some_and(|x| x == "image") => {
-                    let image_bytes = f.bytes().await.map_resp_err(&htmx_context)?;
-                    store.create_image(pre_slug.as_str(), image_bytes.as_bytes()).await.err()
-                }
-                _ => Some(anyhow::anyhow!("Multipart missing image field")),
-            }
-        }
-        _ => Some(anyhow::anyhow!("Multipart missing slug field")),
+    let (code, error) = match read_image_upload(multipart).await {
+        Ok((slug, image_bytes)) => (
+            StatusCode::OK,
+            store.create_image(slug.as_str(), image_bytes.as_bytes()).await.err(),
+        ),
+        Err(e) => match e.downcast_ref::<MultipartError>().map(MultipartError::status) {
+            Some(StatusCode::PAYLOAD_TOO_LARGE) => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Some(anyhow::anyhow!(
+                    "image is larger than the {} MiB upload limit",
+                    MAX_UPLOAD_BYTES / 1024 / 1024
+                )),
+            ),
+            Some(code) => (code, Some(e)),
+            None => (StatusCode::BAD_REQUEST, Some(e)),
+        },
     };
     let images = store.list_images().await.map_resp_err(&htmx_context)?;
-    Ok(views::list_images_page(images, error, htmx_context).into_response())
+    Ok(views::list_images_page(code, images, error, htmx_context))
+}
+
+/// Reads the slug and image fields, in that order, from the image upload form.
+async fn read_image_upload(mut multipart: Multipart) -> Result<(String, Bytes), anyhow::Error> {
+    let slug = match multipart.next_field().await? {
+        Some(f) if f.name().is_some_and(|x| x == "slug") => f.text().await?,
+        _ => return Err(anyhow::anyhow!("Multipart missing slug field")),
+    };
+    match multipart.next_field().await? {
+        Some(f) if f.name().is_some_and(|x| x == "image") => Ok((slug, f.bytes().await?)),
+        _ => Err(anyhow::anyhow!("Multipart missing image field")),
+    }
 }
 
 async fn get_image_handler(
@@ -352,4 +370,15 @@ async fn livez_handler() -> Response {
 async fn readyz_handler(State(store): State<Arc<Store>>) -> Result<Response, ResponseError> {
     store.readyz().await.map_resp_err(&None)?;
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_labels() {
+        assert_eq!(parse_labels(""), Vec::<String>::new());
+        assert_eq!(parse_labels("node, rust ,,  c# "), vec!["node", "rust", "c#"]);
+    }
 }

@@ -18,12 +18,15 @@ Features:
 - Validation of markdown conversion for all existing posts on startup.
 
 ```
-Usage: bloog [OPTIONS] --store-url <STORE_URL> <COMMAND>
+Usage: bloog [OPTIONS] --store-url <STORE_URL> [HONEYCOMB_KEY] <COMMAND>
 
 Commands:
   viewer  Launch the read-only viewer process
   editor  Launch the read-write editor process
   help    Print this message or the help of the given subcommand(s)
+
+Arguments:
+  [HONEYCOMB_KEY]  [env: BLOOG_HONEYCOMB_KEY=]
 
 Options:
   -s, --store-url <STORE_URL>  The arrow/object_store url schema with config options as query args. [env: BLOOG_STORE_URL=]
@@ -32,13 +35,16 @@ Options:
   -V, --version                Print version
 ```
 
-Running against my Backblaze B2 bucket:
+Running against an S3-compatible bucket (this example uses Scaleway Object Storage in `fr-par`; any provider supported by
+[object_store](https://docs.rs/object_store) works by changing the url and its options):
 
 ```
-export BLOOG_STORE_URL='--store-url s3://<bucket>?access_key_id=<key id>&secret_access_key=<key>&endpoint=https://s3.us-east-005.backblazeb2.com'
+export BLOOG_STORE_URL='s3://<bucket>?access_key_id=<key id>&secret_access_key=<key>&region=fr-par&endpoint=https://s3.fr-par.scw.cloud'
 bloog --port 8081 editor
 bloog --port 8080 viewer
 ```
+
+For local development, a directory works too: `--store-url file:///path/to/store`.
 
 Releasing a new version:
 

@@ -340,9 +340,14 @@ pub(crate) fn debug_objects_page(objects: Vec<ObjectMeta>, htmx_context: Option<
     )
 }
 
-pub(crate) fn list_images_page(images: Vec<Image>, error: Option<Error>, htmx_context: Option<Box<HtmxContext>>) -> Response {
+pub(crate) fn list_images_page(
+    code: StatusCode,
+    images: Vec<Image>,
+    error: Option<Error>,
+    htmx_context: Option<Box<HtmxContext>>,
+) -> Response {
     render_body_html_or_htmx(
-        StatusCode::OK,
+        code,
         "Images",
         render_body_semantics(
             "Images",

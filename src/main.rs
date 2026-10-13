@@ -2,14 +2,15 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use clap::{Parser, Subcommand, crate_name, crate_version};
-use log::info;
 use opentelemetry::KeyValue;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector};
 use std::collections::HashMap;
+use std::process::ExitCode;
 use tokio::task::spawn_blocking;
+use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer, fmt, registry};
@@ -27,9 +28,13 @@ mod viewer;
 mod viewhelpers;
 
 #[tokio::main]
-async fn main() {
-    if let Err(e) = main_err().await {
-        eprintln!("{}", e);
+async fn main() -> ExitCode {
+    match main_err().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{:#}", e);
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -46,7 +51,7 @@ struct Args {
     store_url: Url,
 
     #[arg(short, long, env = "BLOOG_PORT", default_value = "8080", help = "The HTTP port to listen on.")]
-    port: usize,
+    port: u16,
 
     #[arg(env = "BLOOG_HONEYCOMB_KEY")]
     honeycomb_key: Option<String>,
@@ -64,7 +69,8 @@ enum Command {
 }
 
 async fn main_err() -> Result<(), anyhow::Error> {
-    let args = Args::try_parse()?;
+    // parse() prints help, version and usage errors itself and exits with the right code.
+    let args = Args::parse();
 
     let optional_tracer_provider = match &args.honeycomb_key {
         Some(honeycomb_key) => {
@@ -109,19 +115,62 @@ async fn main_err() -> Result<(), anyhow::Error> {
         "Parsed args {:?}, creating store..",
         Args {
             store_url: anonymous_url,
+            honeycomb_key: args.honeycomb_key.as_ref().map(|_| "<redacted>".to_string()),
             ..args.clone()
         }
     );
     let store = store::Store::from_url(&args.store_url)?;
 
     info!("Starting {:?}..", args.command);
-    match args.command {
-        Command::Viewer => viewer::run(viewer::Config { port: args.port as u16 }, store).await?,
-        Command::Editor => editor::run(editor::Config { port: args.port as u16 }, store).await?,
-    }
+    let result = match args.command {
+        Command::Viewer => viewer::run(viewer::Config { port: args.port }, store).await,
+        Command::Editor => editor::run(editor::Config { port: args.port }, store).await,
+    };
 
+    // Flush any buffered spans before exiting, regardless of how the server stopped.
     if let Some(tracer_provider) = optional_tracer_provider {
-        spawn_blocking(move || tracer_provider.shutdown());
+        match spawn_blocking(move || tracer_provider.shutdown()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => eprintln!("failed to shutdown tracer provider: {}", e),
+            Err(e) => eprintln!("failed to join tracer provider shutdown: {}", e),
+        }
     }
-    Ok(())
+    result
+}
+
+/// Resolves when the process receives Ctrl-C or SIGTERM so that the servers can shut down gracefully.
+pub(crate) async fn shutdown_signal() {
+    let ctrl_c = async {
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    info!("Shutdown signal received..");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_port_must_fit_u16() {
+        let parse = |port: &str| Args::try_parse_from(["bloog", "--store-url", "file:///tmp/x", "--port", port, "viewer"]);
+        assert!(parse("8080").is_ok_and(|a| a.port == 8080));
+        assert!(parse("70000").is_err());
+    }
 }

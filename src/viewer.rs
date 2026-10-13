@@ -12,12 +12,12 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use chrono::Datelike;
 use itertools::Itertools;
-use log::info;
 use maud::PreEscaped;
 use object_store::path::PathPart;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
+use tracing::info;
 use tracing::instrument;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
@@ -52,7 +52,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
                 .on_failure(customhttptrace::HttpTraceLayerHooks),
         );
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app).with_graceful_shutdown(crate::shutdown_signal()).await?;
     Ok(())
 }
 
@@ -150,7 +150,10 @@ async fn get_post_handler(
     Path(slug): Path<String>,
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
-    if let Some((post, content)) = store.get_post_raw(&slug).await.map_resp_err(&htmx_context)? {
+    // Unpublished posts are only visible in the editor.
+    if let Some((post, content)) = store.get_post_raw(&slug).await.map_resp_err(&htmx_context)?
+        && post.published
+    {
         let (content_html, toc) = convert(content.as_str(), &HashSet::default()).map_resp_err(&htmx_context)?;
         Ok(views::get_post_page(post, PreEscaped(content_html), PreEscaped(toc), htmx_context).into_response())
     } else {
