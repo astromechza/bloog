@@ -1,6 +1,6 @@
 use crate::htmx::HtmxContext;
 use crate::store::{Image, Post};
-use crate::viewhelpers::COMMON_CSS;
+use crate::viewhelpers::{COMMON_CSS, FONTS_CSS_URL};
 use anyhow::Error;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
@@ -11,20 +11,20 @@ use object_store::ObjectMeta;
 fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {
     html! {
         (DOCTYPE)
-        html {
+        html lang="en" {
             head {
                 title { (title.as_ref()) }
                 meta charset="utf-8";
                 link rel="shortcut icon" href="/statics/favicon.svg" type="image/svg+xml";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
+                link rel="stylesheet" href=(FONTS_CSS_URL);
                 style {
                     (PreEscaped(COMMON_CSS))
                     r##"
                     textarea {
                       min-height: 50rem;
                       background: white;
-                      font-family: monospace;
                     }
                     "##
                 }
@@ -41,7 +41,7 @@ pub(crate) fn render_body_semantics(header: &str, sections: Vec<Markup>) -> Mark
     html! {
         main class="container" {
             header {
-                nav.row {
+                nav.row aria-label="Main" {
                     a.button.button-clear.column href="/posts" { "Posts" }
                     a.button.button-clear.column href="/images" { "Images" }
                     a.button.button-clear.column href="/debug" { "Debug" }
@@ -186,34 +186,34 @@ fn render_post_form(current: Option<(&Post, &str)>, is_new: bool) -> Markup {
             div.column {
                 label for="slug" { "URL Slug (immutable)" }
                 @if is_new {
-                    input type="text" name="slug" spellcheck="true" required="true" placeholder="the-url-slug-of-this-post" value=[current.as_ref().map(|x| &x.0.slug)];
+                    input type="text" id="slug" name="slug" spellcheck="true" required="true" placeholder="the-url-slug-of-this-post" value=[current.as_ref().map(|x| &x.0.slug)];
                 } @else {
-                    input type="text" disabled? value=[current.as_ref().map(|x| &x.0.slug)];
+                    input type="text" id="slug" disabled? value=[current.as_ref().map(|x| &x.0.slug)];
                 }
             }
             div.column {
                 label for="title" { "Post Title" }
-                input type="text" name="title" spellcheck="true" required="true" placeholder="The title of this post" value=[current.as_ref().map(|x| &x.0.title)];
+                input type="text" id="title" name="title" spellcheck="true" required="true" placeholder="The title of this post" value=[current.as_ref().map(|x| &x.0.title)];
             }
             div.column {
                 label for="published" { "Published" }
-                input type="checkbox" name="published" value="true" checked[current.as_ref().map(|x| x.0.published).unwrap_or_default()];
+                input type="checkbox" id="published" name="published" value="true" checked[current.as_ref().map(|x| x.0.published).unwrap_or_default()];
             }
         }
         div.row {
             div.column {
                 label for="date" { "Post Date" }
-                input type="date" name="date" required="true" value=(current.as_ref().map(|x| &x.0.date).unwrap_or(&Local::now().date_naive()));
+                input type="date" id="date" name="date" required="true" value=(current.as_ref().map(|x| &x.0.date).unwrap_or(&Local::now().date_naive()));
             }
             div.column {
                 label for="labels" { "Labels" }
-                input type="text" name="labels" placeholder="label,label,label" value=[current.as_ref().map(|x| x.0.labels.join(","))];
+                input type="text" id="labels" name="labels" placeholder="label,label,label" value=[current.as_ref().map(|x| x.0.labels.join(","))];
             }
         }
         div.row {
             div.column {
                 label for="raw_content" { "Raw Content" }
-                textarea name="raw_content" spellcheck="true" lang="en" wrap="soft" placeholder="Your post content here.." {
+                textarea id="raw_content" name="raw_content" spellcheck="true" lang="en" wrap="soft" placeholder="Your post content here.." {
                     @if let Some((_, c)) = current.as_ref() {
                         (c)
                     }
@@ -294,7 +294,7 @@ pub(crate) fn edit_posts_page(
                 hr;
                 article hx-boost="false" {
                     h1 { (post.title) }
-                    nav.toc { ul { (toc_content) } }
+                    nav.toc aria-label="Table of contents" { ul { (toc_content) } }
                     (html_content)
                 }
             }],
@@ -361,11 +361,11 @@ pub(crate) fn list_images_page(images: Vec<Image>, error: Option<Error>, htmx_co
                     div.row {
                         div.column {
                             label for="slug" { "URL Slug" }
-                            input type="text" name="slug" spellcheck="true" required="true" placeholder="the-url-slug-of-this-image";
+                            input type="text" id="slug" name="slug" spellcheck="true" required="true" placeholder="the-url-slug-of-this-image";
                         }
                         div.column {
-                            label for="images" { "Image" }
-                            input type="file" name="image" required="true";
+                            label for="image" { "Image" }
+                            input type="file" id="image" name="image" required="true";
                         }
                         div.column {
                             button type="submit" { "Submit" }

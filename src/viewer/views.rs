@@ -1,6 +1,6 @@
 use crate::htmx::HtmxContext;
 use crate::store::Post;
-use crate::viewhelpers::{render_body_html_or_htmx, COMMON_CSS};
+use crate::viewhelpers::{render_body_html_or_htmx, COMMON_CSS, FONTS_CSS_URL};
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use chrono::{Datelike, Local};
@@ -24,13 +24,20 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                 link rel="shortcut icon" href="/statics/favicon.svg" type="image/svg+xml";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
-                link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin="anonymous" referrerpolicy="no-referrer";
+                link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" crossorigin="anonymous" referrerpolicy="no-referrer";
+                link rel="preconnect" href="https://fonts.googleapis.com";
+                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
+                link rel="stylesheet" href=(FONTS_CSS_URL);
                 style nonce="123456789" {
                     (PreEscaped(COMMON_CSS))
                     (PreEscaped(r#"
                     .index-nav-ul { margin: 0; list-style: circle outside; }
+                    .year-heading { font-size: 2.8rem; }
                     header.row { justify-content: space-between; align-items: center; }
                     header.row .column { max-width: fit-content; }
+                    header.row .column.title-col { max-width: none; }
+                    header.row .column.social-col { flex: 0 0 auto; }
+                    .bio { font-size: 0.9em; color: var(--tx-muted); }
                     header.row nav.column { margin: 0; }
                     header img {
                       height: 1.3em;
@@ -51,7 +58,7 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
                     }
                     hr {
                         border: 0;
-                        border-top: 0.1rem dotted var(--main-tx-colour);
+                        border-top: 0.1rem dotted var(--tx-muted);
                         margin: 3.0rem 0;
                     }
                     "#))
@@ -160,19 +167,19 @@ pub(crate) fn get_index_page(
         html! {
             main.container {
                 header.row.m-b-05 {
-                    h1.column style="max-width: none" {
+                    h1.column.title-col {
                         a href="/" title="Back to index" {
                             "/ "
                         }
                         "Ben's Blog"
                     }
-                    div.column style="flex: 0 0 auto" {
+                    div.column.social-col {
                         img src="/statics/bluesky.svg" alt="Bluesky logo";
                         a href="https://bsky.app/profile/ben.bsky.meierhost.com" target="_blank" {
                             "@ben.bsky.meierhost.com"
                         }
                     }
-                    div.column style="flex: 0 0 auto" {
+                    div.column.social-col {
                         img src="/statics/github.svg" alt="Github logo";
                         a href="https://github.com/astromechza" target="_blank" {
                             "github/astromechza"
@@ -180,7 +187,7 @@ pub(crate) fn get_index_page(
                     }
                 }
                 section {
-                    p.block style="font-size: smaller" {
+                    p.block.bio {
                         r#"
                         I'm a software engineer working mostly on distributed systems with an interest in security, networking, correctness, and chaos.
                         All opinions expressed here are my own.
@@ -200,7 +207,7 @@ pub(crate) fn get_index_page(
                     }
                     nav {
                         @for (y, g) in year_groups {
-                            h3 { (y) }
+                            h2.year-heading { (y) }
                             ul.index-nav-ul {
                                 @for p in g {
                                     li {
