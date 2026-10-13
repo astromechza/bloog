@@ -15,7 +15,7 @@ use image::{DynamicImage, ImageReader};
 use itertools::Itertools;
 use object_store::local::LocalFileSystem;
 use object_store::path::{Path, PathPart, DELIMITER};
-use object_store::{ObjectMeta, ObjectStore, PutOptions, PutPayload};
+use object_store::{ObjectMeta, ObjectStore, ObjectStoreExt, PutOptions, PutPayload};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::io::Cursor;
@@ -119,7 +119,11 @@ impl Image {
 
     pub fn resolve_full_path(&self, parent: &Path) -> Path {
         let original = self.to_original();
-        parent.child("images").child(original.to_path_part()).child(self.to_path_part())
+        parent
+            .clone()
+            .join("images")
+            .join(original.to_path_part())
+            .join(self.to_path_part())
     }
 }
 
@@ -181,7 +185,7 @@ impl Store {
     /// the healthcheck interval in the k8s pod.
     #[instrument(skip_all, err)]
     pub async fn readyz(&self) -> Result<(), Error> {
-        match self.os.head(&self.sub_path.child("not-exists")).await {
+        match self.os.head(&self.sub_path.clone().join("not-exists")).await {
             Ok(_) => Ok(()),
             Err(object_store::Error::NotFound { .. }) => Ok(()),
             Err(e) => Err(e.into()),
@@ -205,28 +209,28 @@ impl Store {
 
         let (html_content, toc) = self.convert_html_with_validation(content).await?;
 
-        let post_path = self.sub_path.child("posts").child(post.slug.clone());
+        let post_path = self.sub_path.clone().join("posts").join(post.slug.clone());
         let post_meta = PostMetadata::V1((post.date, post.title.clone(), IsPublished(post.published)));
         let post_meta_bytes = postcard::to_allocvec(&post_meta)?;
         let post_meta_raw = BASE64_STANDARD_NO_PAD.encode(&post_meta_bytes);
 
         self.os
             .put_opts(
-                &post_path.child("content"),
+                &post_path.clone().join("content"),
                 PutPayload::from(content.to_string()),
                 PutOptions::default(),
             )
             .await?;
         self.os
             .put_opts(
-                &post_path.child("props").child(post_meta_raw.clone()),
+                &post_path.clone().join("props").join(post_meta_raw.clone()),
                 PutPayload::default(),
                 PutOptions::default(),
             )
             .await?;
         // write the tags concurrently
         FuturesUnordered::from_iter(post.labels.iter().map(|lbl| {
-            let label_path = post_path.child("labels").child(lbl.clone()).to_owned();
+            let label_path = post_path.clone().join("labels").join(lbl.clone()).to_owned();
             async move {
                 self.os
                     .put_opts(&label_path, PutPayload::default(), PutOptions::default())
@@ -282,7 +286,7 @@ impl Store {
 
     #[instrument(skip_all, fields(slug = slug), err)]
     pub async fn delete_post(&self, slug: &str) -> Result<(), Error> {
-        self.delete_paths_by_prefix(&self.sub_path.child("posts").child(slug))
+        self.delete_paths_by_prefix(&self.sub_path.clone().join("posts").join(slug))
             .await
             .map(|_| ())
     }
@@ -390,7 +394,7 @@ impl Store {
 
     #[instrument(skip_all, fields(img = %img.as_ref()), err)]
     pub async fn delete_image(&self, img: impl AsRef<Image>) -> Result<(), Error> {
-        let prefix_path = &self.sub_path.child("images").child(img.as_ref().to_original().to_path_part());
+        let prefix_path = &self.sub_path.clone().join("images").join(img.as_ref().to_original().to_path_part());
         self.delete_paths_by_prefix(prefix_path).await.and_then(|i| match i {
             0 => Err(Error::msg("not found")),
             _ => Ok(()),
@@ -423,7 +427,7 @@ impl Store {
     pub async fn list_posts(&self) -> Result<Vec<Post>, Error> {
         let objects_paths: Vec<Path> = self
             .os
-            .list(Some(&self.sub_path.child("posts")))
+            .list(Some(&self.sub_path.clone().join("posts")))
             .map_ok(|i| path_tail(&i.location, &self.sub_path))
             .boxed()
             .try_collect::<Vec<Path>>()
@@ -459,10 +463,10 @@ impl Store {
 
     #[instrument(skip_all, fields(slug = slug), err)]
     pub async fn get_post_raw(&self, slug: &str) -> Result<Option<(Post, String)>, Error> {
-        let post_path = self.sub_path.child("posts").child(slug);
+        let post_path = self.sub_path.clone().join("posts").join(slug);
         let content_bytes = match self
             .os
-            .get(&post_path.child("content"))
+            .get(&post_path.clone().join("content"))
             .and_then(|gr| gr.bytes())
             .instrument(info_span!("get"))
             .await
@@ -505,7 +509,7 @@ impl Store {
     pub async fn list_images(&self) -> Result<Vec<Image>, Error> {
         Ok(self
             .os
-            .list(Some(&self.sub_path.child("images")))
+            .list(Some(&self.sub_path.clone().join("images")))
             .try_collect::<Vec<ObjectMeta>>()
             .instrument(info_span!("list"))
             .await?
