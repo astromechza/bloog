@@ -16,6 +16,7 @@ use itertools::Itertools;
 use object_store::local::LocalFileSystem;
 use object_store::path::{DELIMITER, Path, PathPart};
 use object_store::{ObjectMeta, ObjectStore, ObjectStoreExt, PutOptions, PutPayload};
+use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::io::Cursor;
@@ -25,6 +26,12 @@ use std::sync::Arc;
 use tracing::{Instrument, info_span, instrument};
 use url::Url;
 use xmlparser::Token;
+
+/// Returns the original string of a [PathPart]. Path parts built with `PathPart::from` percent-encode characters that
+/// are invalid in object keys (eg: `/`, `#`, `%`), so they must be decoded before comparing them with the raw value.
+fn decode_path_part(part: &PathPart) -> String {
+    percent_decode_str(part.as_ref()).decode_utf8_lossy().into_owned()
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Post {
@@ -251,8 +258,8 @@ impl Store {
                 let tail = path_tail(p, &post_path);
                 if let Some((sec, k)) = tail.parts().next_tuple::<(PathPart, PathPart)>() {
                     return ready(
-                        (sec.as_ref() == "props" && k.as_ref() != post_meta_raw.as_str())
-                            || (sec.as_ref() == "labels" && !post.labels.contains(&k.as_ref().to_string())),
+                        (sec.as_ref() == "props" && decode_path_part(&k) != post_meta_raw)
+                            || (sec.as_ref() == "labels" && !post.labels.contains(&decode_path_part(&k))),
                     );
                 }
                 ready(false)
@@ -406,7 +413,7 @@ impl Store {
             .filter_map(|p| {
                 let mut iter = p.parts();
                 if iter.nth(offset + 2).filter(|pp| pp.as_ref() == "labels").is_some() {
-                    iter.next().map(|pp| pp.as_ref().to_string())
+                    iter.next().map(|pp| decode_path_part(&pp))
                 } else {
                     None
                 }
@@ -419,7 +426,7 @@ impl Store {
         paths
             .find(|path| path.parts().nth(offset + 2).filter(|pp| pp.as_ref() == "props").is_some())
             .and_then(|path| path.parts().nth(offset + 3))
-            .and_then(|p| BASE64_STANDARD_NO_PAD.decode(p.as_ref().as_bytes()).ok())
+            .and_then(|p| BASE64_STANDARD_NO_PAD.decode(decode_path_part(&p)).ok())
             .and_then(|b| postcard::from_bytes(&b).ok())
     }
 
@@ -588,7 +595,7 @@ enum PostMetadata {
 impl TryFrom<PathPart<'_>> for PostMetadata {
     type Error = Error;
     fn try_from(part: PathPart) -> Result<Self, Self::Error> {
-        let props_bytes = BASE64_STANDARD_NO_PAD.decode(part.as_ref().as_bytes())?;
+        let props_bytes = BASE64_STANDARD_NO_PAD.decode(decode_path_part(&part))?;
         let meta = postcard::from_bytes(&props_bytes)?;
         Ok(meta)
     }
@@ -729,6 +736,40 @@ mod tests {
         assert_eq!(content, "my-updated-content".to_string());
         assert_eq!(store.list_object_meta().await?.len(), 4);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_store_posts_with_encoded_path_parts() -> Result<(), Error> {
+        let store = Store::default();
+        let date = NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?;
+        // This title encodes to base64 containing '/', which the object store path percent-encodes.
+        let title = "Is it 100%?".to_string();
+        let props = BASE64_STANDARD_NO_PAD.encode(postcard::to_allocvec(&PostMetadata::V1((date, title.clone(), IsPublished(true))))?);
+        assert!(props.contains('/'));
+        let labels = vec!["100%".to_string(), "c#".to_string(), "plain".to_string()];
+        store
+            .upsert_post(
+                &Post {
+                    date,
+                    slug: "encoded-post".to_string(),
+                    title: title.clone(),
+                    published: true,
+                    labels: labels.clone(),
+                },
+                "content",
+            )
+            .await?;
+
+        let (post, _) = store.get_post_raw("encoded-post").await?.unwrap_or_default();
+        assert_eq!(post.title, title);
+        assert_eq!(post.date, date);
+        assert!(post.published);
+        assert_eq!(post.labels, labels);
+        let listed = store.list_posts().await?;
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].title, title);
+        assert_eq!(listed[0].labels, labels);
         Ok(())
     }
 

@@ -38,3 +38,4 @@ tracing-subscriber = { version = "0.3.23" , default-features = false, features =
 # Provides the axum middleware for emitting spans
 tower-http = { version = "0.7.1", default-features = false, features = ["trace"] }
 http = { version = "1.5.0" }
+percent-encoding = { version = "2.3.2" }

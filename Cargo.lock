@@ -307,6 +307,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "percent-encoding",
  "postcard",
  "pulldown-cmark",
  "rust-embed",
