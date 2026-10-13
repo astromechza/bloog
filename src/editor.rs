@@ -4,11 +4,13 @@ use super::store::{Image, Post, Store};
 use crate::htmx::HtmxContext;
 use crate::statics::{get_favicon_ico_handler, get_static_handler};
 use crate::{conversion, customhttptrace, statics};
+use axum::extract::multipart::MultipartError;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post};
 use axum::{Form, Router};
+use bytes::Bytes;
 use chrono::NaiveDate;
 use image::EncodableLayout;
 use maud::PreEscaped;
@@ -278,30 +280,46 @@ async fn debug_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> R
 async fn list_images_handler(State(store): State<Arc<Store>>, headers: HeaderMap) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
     let images = store.list_images().await.map_resp_err(&htmx_context)?;
-    Ok(views::list_images_page(images, None, htmx_context).into_response())
+    Ok(views::list_images_page(StatusCode::OK, images, None, htmx_context))
 }
 
 async fn submit_image_handler(
     State(store): State<Arc<Store>>,
     headers: HeaderMap,
-    mut multipart: Multipart,
+    multipart: Multipart,
 ) -> Result<Response, ResponseError> {
     let htmx_context = HtmxContext::try_from(&headers).map(Box::new).ok();
-    let error: Option<anyhow::Error> = match multipart.next_field().await.map_resp_err(&htmx_context)? {
-        Some(f) if f.name().is_some_and(|x| x == "slug") => {
-            let pre_slug = f.text().await.map_resp_err(&htmx_context)?;
-            match multipart.next_field().await.map_resp_err(&htmx_context)? {
-                Some(f) if f.name().is_some_and(|x| x == "image") => {
-                    let image_bytes = f.bytes().await.map_resp_err(&htmx_context)?;
-                    store.create_image(pre_slug.as_str(), image_bytes.as_bytes()).await.err()
-                }
-                _ => Some(anyhow::anyhow!("Multipart missing image field")),
-            }
-        }
-        _ => Some(anyhow::anyhow!("Multipart missing slug field")),
+    let (code, error) = match read_image_upload(multipart).await {
+        Ok((slug, image_bytes)) => (
+            StatusCode::OK,
+            store.create_image(slug.as_str(), image_bytes.as_bytes()).await.err(),
+        ),
+        Err(e) => match e.downcast_ref::<MultipartError>().map(MultipartError::status) {
+            Some(StatusCode::PAYLOAD_TOO_LARGE) => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Some(anyhow::anyhow!(
+                    "image is larger than the {} MiB upload limit",
+                    MAX_UPLOAD_BYTES / 1024 / 1024
+                )),
+            ),
+            Some(code) => (code, Some(e)),
+            None => (StatusCode::BAD_REQUEST, Some(e)),
+        },
     };
     let images = store.list_images().await.map_resp_err(&htmx_context)?;
-    Ok(views::list_images_page(images, error, htmx_context).into_response())
+    Ok(views::list_images_page(code, images, error, htmx_context))
+}
+
+/// Reads the slug and image fields, in that order, from the image upload form.
+async fn read_image_upload(mut multipart: Multipart) -> Result<(String, Bytes), anyhow::Error> {
+    let slug = match multipart.next_field().await? {
+        Some(f) if f.name().is_some_and(|x| x == "slug") => f.text().await?,
+        _ => return Err(anyhow::anyhow!("Multipart missing slug field")),
+    };
+    match multipart.next_field().await? {
+        Some(f) if f.name().is_some_and(|x| x == "image") => Ok((slug, f.bytes().await?)),
+        _ => Err(anyhow::anyhow!("Multipart missing image field")),
+    }
 }
 
 async fn get_image_handler(
