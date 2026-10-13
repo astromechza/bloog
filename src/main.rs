@@ -84,14 +84,14 @@ async fn main_err() -> Result<(), anyhow::Error> {
                         .with_detector(Box::new(TelemetryResourceDetector {}))
                         .with_detector(Box::new(SdkProvidedResourceDetector {}))
                         .with_detector(Box::new(EnvResourceDetector::new()))
-                        .with_service_name(format!("bloog-{:?}", &args.command))
+                        .with_service_name(format!("bloog-{:?}", args.command))
                         .build(),
                 )
                 .build();
             registry()
                 .with(EnvFilter::from_default_env())
                 .with(fmt::Layer::default().with_filter(EnvFilter::from_default_env()))
-                .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer(format!("bloog-{:?}", &args.command))))
+                .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer(format!("bloog-{:?}", args.command))))
                 .init();
 
             Some(tracer_provider)
