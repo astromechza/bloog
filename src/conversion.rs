@@ -1,7 +1,7 @@
 use crate::store::{Image, Post};
 use anyhow::anyhow;
 use maud::html;
-use pulldown_cmark::{BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag, html};
+use pulldown_cmark::{BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag, TagEnd, html};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::instrument;
@@ -54,25 +54,22 @@ pub fn build_valid_links(ps: &[Post], is: &[Image]) -> HashSet<String> {
 #[instrument(skip_all, err)]
 pub fn convert(content: &str, valid_links: &HashSet<String>) -> Result<(String, String), anyhow::Error> {
     let (error_capture, parser) = pulldown_parser(content);
-    let mut hn = HeadingChecker {
-        level: 0,
-        expected_prefix: None,
-        expected_number: vec![],
-        toc: String::new(),
-    };
+    let mut hn = HeadingChecker::default();
     let lc = RelativeLinkChecker { links: valid_links };
-    let mut output = String::new();
-    {
-        let mapped_parser = parser.map(|evt| {
-            lc.observe(&evt).and_then(|_| hn.observe(&evt)).unwrap_or_else(|e| {
+    let mut events = Vec::new();
+    for evt in parser {
+        match lc.observe(&evt).and_then(|_| hn.observe(&evt)) {
+            Ok(mapped) => events.extend(mapped),
+            Err(e) => {
                 if let Ok(mut l) = error_capture.as_ref().lock() {
                     l.replace(e);
                 }
-                evt.clone()
-            })
-        });
-        html::push_html(&mut output, mapped_parser);
-    };
+                events.push(evt);
+            }
+        }
+    }
+    let mut output = String::new();
+    html::push_html(&mut output, events.into_iter());
 
     if let Ok(locked) = error_capture.lock()
         && let Some(e) = locked.as_ref()
@@ -115,14 +112,25 @@ impl RelativeLinkChecker<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
-struct HeadingChecker {
+/// Numbers headings, wraps each heading's content in a self-link, and builds the table of contents. The events inside
+/// a heading are buffered until the heading ends because its text may arrive as several events (eg: smart punctuation,
+/// emphasis, or inline code).
+#[derive(Debug, Default)]
+struct HeadingChecker<'a> {
     level: i16,
     expected_number: Vec<usize>,
-    expected_prefix: Option<String>,
     toc: String,
+    pending: Option<PendingHeading<'a>>,
 }
-impl HeadingChecker {
+
+#[derive(Debug)]
+struct PendingHeading<'a> {
+    prefix: String,
+    start: Event<'a>,
+    inner: Vec<Event<'a>>,
+}
+
+impl<'a> HeadingChecker<'a> {
     fn hl_to_i16(h: HeadingLevel) -> i16 {
         match h {
             HeadingLevel::H1 => 1,
@@ -149,7 +157,8 @@ impl HeadingChecker {
             .collect()
     }
 
-    pub(crate) fn observe<'a>(&mut self, evt: &Event<'a>) -> Result<Event<'a>, anyhow::Error> {
+    /// Returns the events to emit in place of the observed event; empty while a heading is being buffered.
+    fn observe(&mut self, evt: &Event<'a>) -> Result<Vec<Event<'a>>, anyhow::Error> {
         match evt {
             Event::Start(Tag::Heading { level, .. }) => {
                 let num_level = Self::hl_to_i16(*level);
@@ -175,47 +184,70 @@ impl HeadingChecker {
                     }
                 }
                 self.level = num_level;
-                let mut out = String::with_capacity(self.expected_number.len() * 2);
+                let mut prefix = String::with_capacity(self.expected_number.len() * 2);
                 for (i, x) in self.expected_number.iter().enumerate() {
-                    out.push_str(x.to_string().as_str());
+                    prefix.push_str(x.to_string().as_str());
                     if self.expected_number.len() == 1 || i < self.expected_number.len() - 1 {
-                        out.push('.');
+                        prefix.push('.');
                     }
                 }
-                self.expected_prefix = Some(out);
+                self.pending = Some(PendingHeading {
+                    prefix,
+                    start: evt.clone(),
+                    inner: vec![],
+                });
+                Ok(vec![])
             }
-            Event::Text(s) => {
-                if let Some(pref) = &self.expected_prefix {
-                    let valid_id = Self::convert_to_valid_id(s);
-                    self.toc.push_str(
-                        html! {
-                            li class=(format!("toc-l{}", self.expected_number.len())) {
-                                a href={"#" (valid_id)} {
-                                     (pref) " " (s)
-                                }
-                            }
-                        }
-                        .0
-                        .as_str(),
-                    );
-                    return Ok(Event::InlineHtml(CowStr::from(
-                        html! {
-                            a class="hlink" href={"#" (valid_id) } {
-                                small id=(valid_id) {
-                                    (pref)
-                                }
-                                " "
-                                (s)
-                            }
-                        }
-                        .0,
-                    )));
+            Event::End(TagEnd::Heading(_)) => match self.pending.take() {
+                Some(heading) => Ok(self.finish_heading(heading, evt.clone())),
+                None => Ok(vec![evt.clone()]),
+            },
+            _ => match self.pending.as_mut() {
+                Some(heading) => {
+                    heading.inner.push(evt.clone());
+                    Ok(vec![])
                 }
-                self.expected_prefix = None
-            }
-            _ => self.expected_prefix = None,
+                None => Ok(vec![evt.clone()]),
+            },
         }
-        Ok(evt.clone())
+    }
+
+    fn finish_heading(&mut self, heading: PendingHeading<'a>, end: Event<'a>) -> Vec<Event<'a>> {
+        let text: String = heading
+            .inner
+            .iter()
+            .filter_map(|e| match e {
+                Event::Text(s) | Event::Code(s) => Some(s.as_ref()),
+                _ => None,
+            })
+            .collect();
+        let valid_id = Self::convert_to_valid_id(&text);
+        let prefix = heading.prefix;
+        self.toc.push_str(
+            html! {
+                li class=(format!("toc-l{}", self.expected_number.len())) {
+                    a href={"#" (valid_id)} {
+                         (prefix) " " (text)
+                    }
+                }
+            }
+            .0
+            .as_str(),
+        );
+        let anchor_open = html! {
+            small id=(valid_id) { (prefix) }
+            " "
+        };
+        let mut out = Vec::with_capacity(heading.inner.len() + 4);
+        out.push(heading.start);
+        out.push(Event::InlineHtml(CowStr::from(format!(
+            r##"<a class="hlink" href="#{}">{}"##,
+            valid_id, anchor_open.0
+        ))));
+        out.extend(heading.inner);
+        out.push(Event::InlineHtml(CowStr::from("</a>")));
+        out.push(end);
+        out
     }
 }
 
@@ -309,6 +341,32 @@ _italic_
             .0,
             "bad heading with level h3: heading level should be h1, h0, or h2",
         )
+    }
+
+    #[test]
+    fn test_headings_with_split_text() {
+        let (content, toc) = convert(
+            r"
+# Don't panic
+## Hello *world*
+## `code` first
+",
+            &HashSet::new(),
+        )
+        .unwrap_or_else(|e| (e.to_string(), String::new()));
+        assert_eq!(
+            content,
+            r##"<h1><a class="hlink" href="#dont-panic"><small id="dont-panic">1.</small> Don’t panic</a></h1>
+<h2><a class="hlink" href="#hello-world"><small id="hello-world">1.1</small> Hello <em>world</em></a></h2>
+<h2><a class="hlink" href="#code-first"><small id="code-first">1.2</small> <code>code</code> first</a></h2>
+"##,
+        );
+        assert_eq!(
+            toc,
+            "<li class=\"toc-l1\"><a href=\"#dont-panic\">1. Don’t panic</a></li>\
+            <li class=\"toc-l2\"><a href=\"#hello-world\">1.1 Hello world</a></li>\
+            <li class=\"toc-l2\"><a href=\"#code-first\">1.2 code first</a></li>"
+        );
     }
 
     #[test]
