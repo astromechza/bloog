@@ -213,7 +213,8 @@ impl Store {
             return Err(anyhow!("invalid post slug - no spaces allowed"));
         }
 
-        let (html_content, toc) = self.convert_html_with_validation(content).await?;
+        let content = conversion::normalize_heading_spaces(content);
+        let (html_content, toc) = self.convert_html_with_validation(&content).await?;
 
         let post_path = self.sub_path.clone().join("posts").join(post.slug.clone());
         let post_meta = PostMetadata::V1((post.date, post.title.clone(), IsPublished(post.published)));
@@ -223,7 +224,7 @@ impl Store {
         self.os
             .put_opts(
                 &post_path.clone().join("content"),
-                PutPayload::from(content.to_string()),
+                PutPayload::from(content.into_owned()),
                 PutOptions::default(),
             )
             .await?;
@@ -735,6 +736,26 @@ mod tests {
         assert_eq!(content, "my-updated-content".to_string());
         assert_eq!(store.list_object_meta().await?.len(), 4);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_store_posts_normalizes_heading_spaces() -> Result<(), Error> {
+        let store = Store::default();
+        store
+            .upsert_post(
+                &Post {
+                    date: NaiveDate::from_ymd_opt(2020, 1, 1).ok_or(anyhow!("invalid date"))?,
+                    slug: "nbsp-post".to_string(),
+                    title: "Nbsp post".to_string(),
+                    published: true,
+                    labels: vec![],
+                },
+                "#\u{a0}title",
+            )
+            .await?;
+        let (_, content) = store.get_post_raw("nbsp-post").await?.unwrap_or_default();
+        assert_eq!(content, "# title");
         Ok(())
     }
 
