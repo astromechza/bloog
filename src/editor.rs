@@ -118,6 +118,11 @@ async fn new_post_handler(headers: HeaderMap) -> Result<Response, ResponseError>
     Ok(views::new_posts_page(None, None, htmx_context))
 }
 
+/// Splits the comma separated labels from the post forms, ignoring surrounding whitespace and empty entries.
+fn parse_labels(raw: &str) -> Vec<String> {
+    raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct NewPostForm {
     slug: String,
@@ -139,11 +144,7 @@ async fn submit_new_post_handler(
         slug: form.slug.clone(),
         title: form.title,
         published: form.published.unwrap_or_default(),
-        labels: form
-            .labels
-            .split(",")
-            .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
-            .collect(),
+        labels: parse_labels(&form.labels),
     };
     if store.get_post_raw(form.slug.as_str()).await.map_resp_err(&htmx_context)?.is_some() {
         return Ok(views::new_posts_page(
@@ -228,11 +229,7 @@ async fn submit_edit_post_handler(
         slug: slug.clone(),
         title: form.title,
         published: form.published.unwrap_or_default(),
-        labels: form
-            .labels
-            .split(",")
-            .filter_map(|s| Some(s.to_string()).filter(|s| !s.is_empty()))
-            .collect(),
+        labels: parse_labels(&form.labels),
     };
     let ((html_content, toc), error) = match store.upsert_post(&temporary_post, form.raw_content.as_str()).await {
         Err(e) => ((String::new(), String::new()), Some(e.to_string())),
@@ -352,4 +349,15 @@ async fn livez_handler() -> Response {
 async fn readyz_handler(State(store): State<Arc<Store>>) -> Result<Response, ResponseError> {
     store.readyz().await.map_resp_err(&None)?;
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_labels() {
+        assert_eq!(parse_labels(""), Vec::<String>::new());
+        assert_eq!(parse_labels("node, rust ,,  c# "), vec!["node", "rust", "c#"]);
+    }
 }
