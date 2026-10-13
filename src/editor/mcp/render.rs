@@ -27,7 +27,10 @@ pub fn render(content: &str, opts: &RenderOptions) -> Rendered {
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
     let start = opts.offset.max(1);
-    let end = opts.limit.map(|l| (start + l.max(1) - 1).min(total_lines)).unwrap_or(total_lines);
+    let end = opts
+        .limit
+        .map(|l| start.saturating_add(l.max(1) - 1).min(total_lines))
+        .unwrap_or(total_lines);
     let line = |n: usize| format!("{n}\t{}\n", lines[n - 1]);
 
     let mut text = String::new();
@@ -53,40 +56,38 @@ pub fn render(content: &str, opts: &RenderOptions) -> Rendered {
         };
     };
 
-    // Each group is (first line, last line, first match, last match, match count), all 1-based.
-    let mut groups: Vec<(usize, usize, usize, usize, usize)> = Vec::new();
+    // Each group is (first line, last line, matching lines), all 1-based.
+    let mut groups: Vec<(usize, usize, Vec<usize>)> = Vec::new();
     for n in (start..=end).filter(|n| re.is_match(lines[n - 1])) {
         let lo = n.saturating_sub(opts.context).max(1);
         let hi = (n + opts.context).min(total_lines);
         match groups.last_mut() {
             Some(g) if lo <= g.1 + 1 => {
                 g.1 = hi;
-                g.3 = n;
-                g.4 += 1;
+                g.2.push(n);
             }
-            _ => groups.push((lo, hi, n, n, 1)),
+            _ => groups.push((lo, hi, vec![n])),
         }
     }
 
+    // The budget is checked line by line. The page always reaches its first match, so paging always advances; a
+    // cut before a group's first match resumes at that match, otherwise at the first line not emitted.
     let mut match_count = 0;
-    for (i, &(lo, hi, first_match, last_match, count)) in groups.iter().enumerate() {
-        let mut block = String::new();
-        if i > 0 {
-            block.push_str("--\n");
+    'groups: for (i, (lo, hi, matches)) in groups.iter().enumerate() {
+        let first_match = matches[0];
+        for n in *lo..=*hi {
+            let sep = if i > 0 && n == *lo { "--\n" } else { "" };
+            let l = line(n);
+            let must_emit = i == 0 && n <= first_match;
+            if !must_emit && text.len() + sep.len() + l.len() > opts.budget {
+                next_offset = Some(n.max(first_match));
+                match_count += matches.iter().filter(|m| **m < n).count();
+                break 'groups;
+            }
+            text.push_str(sep);
+            text.push_str(&l);
         }
-        for n in lo..=hi {
-            block.push_str(&line(n));
-        }
-        if !text.is_empty() && text.len() + block.len() > opts.budget {
-            next_offset = Some(first_match);
-            break;
-        }
-        text.push_str(&block);
-        match_count += count;
-        if text.len() > opts.budget && i + 1 < groups.len() {
-            next_offset = Some(last_match + 1);
-            break;
-        }
+        match_count += matches.len();
     }
     if next_offset.is_none() && end < total_lines && start <= total_lines {
         next_offset = Some(end + 1);
@@ -279,11 +280,50 @@ mod tests {
         let mut o = opts(1, None);
         o.pattern = Some(&re);
         o.context = 5;
-        o.budget = 1; // nothing fits, so the first group (matches 10 and 11) is still emitted alone
+        o.budget = 1; // nothing fits, so the page still reaches its first match (lines 5-10) and stops there
         let r = render(&content, &o);
-        assert_eq!(r.match_count, Some(2));
+        assert!(r.text.ends_with("10\tline 10\n"));
+        assert_eq!(r.match_count, Some(1));
         // next page must start after the last match already shown, never at or before it
-        assert_eq!(r.next_offset, Some(12));
+        assert_eq!(r.next_offset, Some(11));
+        Ok(())
+    }
+
+    #[test]
+    fn test_budget_caps_single_large_group() -> Result<(), anyhow::Error> {
+        let content: String = (1..=2000).map(|i| format!("line {i} {}\n", "x".repeat(80))).collect();
+        let re = Regex::new("line")?;
+        let mut offset = 1;
+        let mut pages = 0;
+        loop {
+            let o = RenderOptions {
+                offset,
+                limit: None,
+                pattern: Some(&re),
+                context: 2,
+                budget: OUTPUT_BUDGET,
+            };
+            let r = render(&content, &o);
+            assert!(r.text.len() <= OUTPUT_BUDGET, "page {pages} is {} bytes", r.text.len());
+            pages += 1;
+            match r.next_offset {
+                Some(n) => {
+                    assert!(n > offset, "next_offset {n} must move past {offset}");
+                    assert_eq!(r.match_count, Some(n - offset));
+                    offset = n;
+                }
+                None => break,
+            }
+        }
+        assert!(pages > 1);
+        Ok(())
+    }
+
+    #[test]
+    fn test_huge_offset_does_not_overflow() -> Result<(), anyhow::Error> {
+        let r = render("a\nb\n", &opts(usize::MAX, Some(1000)));
+        assert_eq!(r.text, "");
+        assert_eq!(r.next_offset, None);
         Ok(())
     }
 }

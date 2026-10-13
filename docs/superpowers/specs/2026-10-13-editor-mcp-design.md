@@ -60,8 +60,10 @@ Selection:
 - With `pattern`: lines in the window that match, plus `context` lines either side. Context may extend outside the
   window (it is not clipped). Overlapping or adjacent groups merge; non-contiguous groups are separated by a `--` line
   (like `grep -C`).
-- Output budget: rendering stops before the output would exceed 60,000 characters. When that happens, the response
-  ends at the last complete line (or complete match group) and `next_offset` points to the first line not yet scanned.
+- Output budget: rendering stops before the output would exceed 60,000 characters, checked line by line (a large
+  merged match group can be cut mid-group). The response ends at the last complete line; `next_offset` points to the
+  first line not emitted (or the group's first match, if the cut lands in its leading context). A page always reaches
+  its first match, so a single oversized line is still returned and paging always advances.
 - `next_offset` is present whenever scanning stopped before the last line of the post (window end or budget).
 - `offset > total_lines` returns no lines and no `next_offset`.
 
