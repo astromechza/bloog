@@ -1,3 +1,4 @@
+mod mcp;
 mod views;
 
 use super::store::{Image, Post, Store};
@@ -35,6 +36,7 @@ impl Default for Config {
 const MAX_UPLOAD_BYTES: usize = 64 * 1024 * 1024;
 
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
+    let store = Arc::new(store);
     let app = Router::new()
         .route("/", get(home_handler))
         .route(statics::FAVICON_ICO, get(get_favicon_ico_handler))
@@ -52,9 +54,10 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/debug", get(debug_handler))
         .route("/livez", get(livez_handler))
         .route("/readyz", get(readyz_handler))
+        .nest_service("/mcp", mcp::service(store.clone()))
         .fallback(not_found_handler)
         .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
-        .with_state(Arc::new(store))
+        .with_state(store)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(customhttptrace::HttpTraceLayerHooks)

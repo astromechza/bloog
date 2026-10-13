@@ -38,3 +38,6 @@ tracing-subscriber = { version = "0.3.23" , default-features = false, features =
 tower-http = { version = "0.7.1", default-features = false, features = ["trace"] }
 http = { version = "1.5.0" }
 percent-encoding = { version = "2.3.2" }
+regex = { version = "1.13.1" }
+rmcp = { version = "3.5.1", features = ["server", "macros", "transport-streamable-http-server"] }
+serde_json = { version = "1.0.154" }
