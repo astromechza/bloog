@@ -2,6 +2,7 @@ use crate::store::{Image, Post};
 use anyhow::anyhow;
 use maud::html;
 use pulldown_cmark::{BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag, TagEnd, html};
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::instrument;
@@ -53,7 +54,8 @@ pub fn build_valid_links(ps: &[Post], is: &[Image]) -> HashSet<String> {
 
 #[instrument(skip_all, err)]
 pub fn convert(content: &str, valid_links: &HashSet<String>) -> Result<(String, String), anyhow::Error> {
-    let (error_capture, parser) = pulldown_parser(content);
+    let content = normalize_heading_spaces(content);
+    let (error_capture, parser) = pulldown_parser(&content);
     let mut hn = HeadingChecker::default();
     let lc = RelativeLinkChecker { links: valid_links };
     let mut events = Vec::new();
@@ -110,6 +112,47 @@ impl RelativeLinkChecker<'_> {
         let path = dest_url.split(['#', '?']).next().unwrap_or_default();
         self.links.contains(path)
     }
+}
+
+/// Fixes lines like `#<nbsp>title` that were meant to be headings but would render as plain text because the space
+/// after the `#` is not a normal space. macOS inserts U+00A0 when Option+Space is typed, which is easy to do by accident
+/// while holding Option to type `#` on some keyboard layouts. The content is parsed first so that only text at the start
+/// of a line is touched; code blocks and inline code arrive as other event types and are left alone.
+pub fn normalize_heading_spaces(content: &str) -> Cow<'_, str> {
+    let mut fixes = Vec::new();
+    let mut at_line_start = false;
+    for (event, range) in pulldown_parser(content).1.into_offset_iter() {
+        let was_at_line_start = std::mem::replace(
+            &mut at_line_start,
+            matches!(
+                event,
+                Event::Start(Tag::Paragraph | Tag::Item) | Event::SoftBreak | Event::HardBreak
+            ),
+        );
+        if !was_at_line_start || !matches!(event, Event::Text(_)) {
+            continue;
+        }
+        let raw = &content[range.clone()];
+        let after_hashes = raw.trim_start_matches('#');
+        let hashes = raw.len() - after_hashes.len();
+        if let Some(c) = after_hashes.chars().next()
+            && (1..=6).contains(&hashes)
+            && c.is_whitespace()
+            && c != ' '
+            && c != '\t'
+        {
+            let at = range.start + hashes;
+            fixes.push(at..at + c.len_utf8());
+        }
+    }
+    if fixes.is_empty() {
+        return Cow::Borrowed(content);
+    }
+    let mut out = content.to_string();
+    for fix in fixes.into_iter().rev() {
+        out.replace_range(fix, " ");
+    }
+    Cow::Owned(out)
 }
 
 /// Numbers headings, wraps each heading's content in a self-link, and builds the table of contents. The events inside
@@ -341,6 +384,42 @@ _italic_
             .0,
             "bad heading with level h3: heading level should be h1, h0, or h2",
         )
+    }
+
+    #[test]
+    fn test_normalize_heading_spaces() {
+        for (md, expected) in [
+            ("#\u{a0}title", "# title"),
+            ("###\u{a0}title", "### title"),
+            ("para\n##\u{202f}title", "para\n## title"),
+            ("- #\u{a0}title", "- # title"),
+            ("> #\u{a0}title", "> # title"),
+            ("#\u{a0}one\n\n##\u{a0}two", "# one\n\n## two"),
+        ] {
+            assert_eq!(normalize_heading_spaces(md), expected, "{md:?} should be fixed");
+        }
+        for md in [
+            "# title",
+            "#hashtag",
+            "text with #\u{a0}inside",
+            "```\n#\u{a0}in code\n```",
+            "`#\u{a0}inline`",
+            "#######\u{a0}too many",
+        ] {
+            assert!(
+                matches!(normalize_heading_spaces(md), Cow::Borrowed(_)),
+                "{md:?} should be untouched"
+            );
+        }
+    }
+
+    #[test]
+    fn test_convert_heading_with_abnormal_space() {
+        let (content, _) = convert("#\u{a0}title", &HashSet::new()).unwrap_or_else(|e| (e.to_string(), String::new()));
+        assert_eq!(
+            content,
+            "<h1><a class=\"hlink\" href=\"#title\"><small id=\"title\">1.</small> title</a></h1>\n"
+        );
     }
 
     #[test]
