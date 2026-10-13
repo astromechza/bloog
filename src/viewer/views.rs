@@ -1,13 +1,13 @@
 use crate::htmx::HtmxContext;
 use crate::store::Post;
-use crate::viewhelpers::{render_body_html_or_htmx, COMMON_CSS, FONTS_CSS_URL};
+use crate::viewhelpers::{COMMON_CSS, FONTS_CSS_URL, render_body_html_or_htmx};
 use axum::http::{StatusCode, Uri};
 use axum::response::IntoResponse;
 use chrono::{Datelike, Local};
 use clap::crate_version;
-use lazy_static::lazy_static;
-use maud::{html, Markup, PreEscaped, DOCTYPE};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
 use std::ops::Deref;
+use std::sync::LazyLock;
 
 const RFC3339_DATE_FORMAT: &str = "%Y-%m-%dT00:00:00Z";
 
@@ -73,16 +73,16 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
     }
 }
 
-lazy_static! {
-    static ref FOOTER: Markup = html! {
+static FOOTER: LazyLock<Markup> = LazyLock::new(|| {
+    html! {
         footer.container {
             small {
                 "© Ben Meier " (Local::now().year()) " - "
                 a target="_blank" href={"https://github.com/astromechza/bloog/releases/tag/" (crate_version!()) } { "astromechza/bloog@" (crate_version!()) }
             }
         }
-    };
-}
+    }
+});
 
 pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<Box<HtmxContext>>) -> impl IntoResponse {
     render_body_html_or_htmx(
@@ -160,7 +160,7 @@ pub(crate) fn get_index_page(
     label_filter: Option<String>,
     year_groups: Vec<(&i32, &Vec<&Post>)>,
     htmx_context: Option<Box<HtmxContext>>,
-) -> impl IntoResponse {
+) -> impl IntoResponse + use<> {
     render_body_html_or_htmx(
         StatusCode::OK,
         "Ben's Blog",

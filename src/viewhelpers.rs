@@ -1,7 +1,7 @@
 use crate::htmx::HtmxContext;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
-use maud::{html, Markup};
+use maud::{Markup, html};
 
 /// Renders either the whole main html, or returns just the content suitable for swapping into the main element.
 pub(crate) fn render_body_html_or_htmx(

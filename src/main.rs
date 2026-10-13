@@ -1,18 +1,18 @@
 // Apply the rule to the whole module.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use clap::{crate_name, crate_version, Parser, Subcommand};
+use clap::{Parser, Subcommand, crate_name, crate_version};
 use log::info;
-use opentelemetry::trace::TracerProvider;
 use opentelemetry::KeyValue;
+use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector};
 use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector};
 use std::collections::HashMap;
 use tokio::task::spawn_blocking;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, registry, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, fmt, registry};
 use url::Url;
 
 // Define that crate htmx exists. The code can be found in the htmx file.

@@ -1,7 +1,7 @@
 use crate::store::{Image, Post};
 use anyhow::anyhow;
 use maud::html;
-use pulldown_cmark::{html, BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag};
+use pulldown_cmark::{BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel, Parser, Tag, html};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::instrument;
@@ -73,10 +73,10 @@ pub fn convert(content: &str, valid_links: &HashSet<String>) -> Result<(String, 
         html::push_html(&mut output, mapped_parser);
     };
 
-    if let Ok(locked) = error_capture.lock() {
-        if let Some(e) = locked.as_ref() {
-            return Err(anyhow::format_err!("{}", e));
-        }
+    if let Ok(locked) = error_capture.lock()
+        && let Some(e) = locked.as_ref()
+    {
+        return Err(anyhow::format_err!("{}", e));
     }
     Ok((output, hn.toc.to_string()))
 }
