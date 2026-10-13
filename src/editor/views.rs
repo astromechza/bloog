@@ -1,6 +1,6 @@
 use crate::htmx::HtmxContext;
 use crate::store::{Image, Post};
-use crate::viewhelpers::COMMON_CSS;
+use crate::viewhelpers::{COMMON_CSS, FONTS_CSS_URL};
 use anyhow::Error;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
@@ -18,13 +18,13 @@ fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {
                 link rel="shortcut icon" href="/statics/favicon.svg" type="image/svg+xml";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/modern-normalize/3.0.1/modern-normalize.min.css" integrity="sha512-q6WgHqiHlKyOqslT/lgBgodhd03Wp4BEqKeW6nNtlOY4quzyG3VoQKFrieaCeSnuVseNKRGpGeDU3qPmabCANg==" crossorigin="anonymous" referrerpolicy="no-referrer";
                 link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css" integrity="sha512-xiunq9hpKsIcz42zt0o2vCo34xV0j6Ny8hgEylN3XBglZDtTZ2nwnqF/Z/TTCc18sGdvCjbFInNd++6q3J0N6g==" crossorigin="anonymous" referrerpolicy="no-referrer";
+                link rel="stylesheet" href=(FONTS_CSS_URL);
                 style {
                     (PreEscaped(COMMON_CSS))
                     r##"
                     textarea {
                       min-height: 50rem;
                       background: white;
-                      font-family: monospace;
                     }
                     "##
                 }
