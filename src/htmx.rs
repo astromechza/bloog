@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use axum::http::HeaderMap;
 use std::str::FromStr;
 use url::Url;

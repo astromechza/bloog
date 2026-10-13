@@ -5,7 +5,7 @@ use anyhow::Error;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use chrono::Local;
-use maud::{html, Markup, PreEscaped, DOCTYPE};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
 use object_store::ObjectMeta;
 
 fn render_body_html(title: impl AsRef<str>, inner: Markup) -> Markup {

@@ -28,13 +28,13 @@ pub async fn get_static_handler(headers: HeaderMap, Path(file): Path<String>) ->
         if let Ok(hv) = HeaderValue::from_str(encoded_hash.as_str()) {
             hm.insert("Etag", hv);
         }
-        if let Some(hv) = headers.get("Etag") {
-            if hv.as_bytes() == encoded_hash.as_bytes() {
-                if let Ok(hv) = HeaderValue::from_str(content.data.len().to_string().as_str()) {
-                    hm.insert("Content-Length", hv);
-                }
-                return (StatusCode::NOT_MODIFIED, hm).into_response();
+        if let Some(hv) = headers.get("Etag")
+            && hv.as_bytes() == encoded_hash.as_bytes()
+        {
+            if let Ok(hv) = HeaderValue::from_str(content.data.len().to_string().as_str()) {
+                hm.insert("Content-Length", hv);
             }
+            return (StatusCode::NOT_MODIFIED, hm).into_response();
         }
         hm.insert(
             "Cache-Control",
