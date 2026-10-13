@@ -1,6 +1,3 @@
-// TEMP: removed in Task 3 when service() is mounted.
-#![allow(dead_code)]
-
 mod render;
 
 use crate::store::{Post, Store};

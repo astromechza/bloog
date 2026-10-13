@@ -46,6 +46,14 @@ bloog --port 8080 viewer
 
 For local development, a directory works too: `--store-url file:///path/to/store`.
 
+The editor also serves a read-only [MCP](https://modelcontextprotocol.io) endpoint at `/mcp` so an AI agent can read
+posts and suggest edits (which you apply yourself in the editor). It has no auth of its own: keep the editor on a
+private network such as a Tailscale tailnet. To connect Claude Code:
+
+```
+claude mcp add --transport http bloog http://<editor-host>:8081/mcp
+```
+
 Releasing a new version:
 
 1. Update the version in [Cargo.toml](Cargo.toml).
