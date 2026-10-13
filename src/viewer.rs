@@ -12,12 +12,12 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use chrono::Datelike;
 use itertools::Itertools;
-use log::info;
 use maud::PreEscaped;
 use object_store::path::PathPart;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
+use tracing::info;
 use tracing::instrument;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]

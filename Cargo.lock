@@ -301,7 +301,6 @@ dependencies = [
  "http",
  "image",
  "itertools 0.15.0",
- "log",
  "maud",
  "object_store",
  "opentelemetry",
