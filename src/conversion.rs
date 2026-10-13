@@ -5,6 +5,7 @@ use pulldown_cmark::{BrokenLink, BrokenLinkCallback, CowStr, Event, HeadingLevel
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::instrument;
+use url::Url;
 
 struct BrokenLinkTracker {
     tracker: Arc<Mutex<Option<anyhow::Error>>>,
@@ -93,10 +94,7 @@ impl RelativeLinkChecker<'_> {
             Event::Start(Tag::Link { dest_url, .. }) => Some(("link", dest_url)),
             _ => None,
         };
-        if let Some((link_type, dest_url)) = capture
-            .filter(|_| !self.links.is_empty())
-            .filter(|(_, dl)| !dl.starts_with("http://") && !dl.starts_with("https://") && !self.links.contains(&dl.to_string()))
-        {
+        if let Some((link_type, dest_url)) = capture.filter(|_| !self.links.is_empty()).filter(|(_, dl)| !self.is_valid(dl)) {
             return Err(anyhow!(
                 "{} '{}' references a relative path which does not exist",
                 link_type,
@@ -104,6 +102,16 @@ impl RelativeLinkChecker<'_> {
             ));
         }
         Ok(event.clone())
+    }
+
+    /// In-page anchors and absolute urls with a scheme (http, https, mailto, ..) are always valid. Relative paths must
+    /// reference a known post or image, ignoring any query string or fragment.
+    fn is_valid(&self, dest_url: &str) -> bool {
+        if dest_url.starts_with('#') || Url::parse(dest_url).is_ok() {
+            return true;
+        }
+        let path = dest_url.split(['#', '?']).next().unwrap_or_default();
+        self.links.contains(path)
     }
 }
 
@@ -262,6 +270,25 @@ _italic_
                 .unwrap_or_else(|e| (e.to_string(), String::new()))
                 .0,
             "<p><img src=\"/does-not-exist\" alt=\"internal\" /></p>\n",
+        );
+    }
+
+    #[test]
+    fn test_links_with_anchors_and_schemes() {
+        let links = HashSet::from(["/posts/x".to_string()]);
+        for md in [
+            "[jump](#setup)",
+            "[mail](mailto:someone@example.com)",
+            "[part](/posts/x#install)",
+            "[query](/posts/x?a=b)",
+        ] {
+            assert!(convert(md, &links).is_ok(), "{md} should be valid");
+        }
+        assert_eq!(
+            convert("[missing](/posts/y#install)", &links)
+                .unwrap_or_else(|e| (e.to_string(), String::new()))
+                .0,
+            "link '/posts/y#install' references a relative path which does not exist",
         );
     }
 
