@@ -29,6 +29,9 @@ impl Default for Config {
     }
 }
 
+/// Large enough for full resolution photos, small enough that a mistaken upload cannot exhaust memory.
+const MAX_UPLOAD_BYTES: usize = 64 * 1024 * 1024;
+
 pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
     let app = Router::new()
         .route("/", get(home_handler))
@@ -48,7 +51,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
         .route("/livez", get(livez_handler))
         .route("/readyz", get(readyz_handler))
         .fallback(not_found_handler)
-        .layer(DefaultBodyLimit::disable())
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
         .with_state(Arc::new(store))
         .layer(
             TraceLayer::new_for_http()
