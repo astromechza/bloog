@@ -186,10 +186,9 @@ impl Store {
         }
     }
 
-    /// readyz checks whether we have access to the underlying storage. We use a get and expect a
-    /// 404. Get is 10x cheaper than a list/put. Although not as cheap as delete which is usually
-    /// free. However, I don't want to use delete because it's not read only. Instead, I'll reduce
-    /// the healthcheck interval in the k8s pod.
+    /// readyz checks whether we have access to the underlying storage. We use a head request for a
+    /// key that should not exist and expect a 404. This is read-only and usually the cheapest
+    /// request class on providers that bill per request, but keep the healthcheck interval modest.
     #[instrument(skip_all, err)]
     pub async fn readyz(&self) -> Result<(), Error> {
         match self.os.head(&self.sub_path.clone().join("not-exists")).await {
