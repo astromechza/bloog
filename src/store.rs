@@ -88,8 +88,8 @@ impl Image {
         match self {
             Image::Svg { .. } => HeaderValue::from_static("image/svg+xml"),
             Image::Webp { .. } => HeaderValue::from_static("image/webp"),
-            Image::JpgMedium { .. } => HeaderValue::from_static("image/jpg"),
-            Image::JpgThumbnail { .. } => HeaderValue::from_static("image/jpg"),
+            Image::JpgMedium { .. } => HeaderValue::from_static("image/jpeg"),
+            Image::JpgThumbnail { .. } => HeaderValue::from_static("image/jpeg"),
         }
     }
 
