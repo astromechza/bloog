@@ -23,6 +23,13 @@ pub struct Rendered {
     pub match_count: Option<usize>,
 }
 
+/// A run of output lines around one or more matches, all 1-based.
+struct Group {
+    lo: usize,
+    hi: usize,
+    matches: Vec<usize>,
+}
+
 pub fn render(content: &str, opts: &RenderOptions) -> Rendered {
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
@@ -56,38 +63,38 @@ pub fn render(content: &str, opts: &RenderOptions) -> Rendered {
         };
     };
 
-    // Each group is (first line, last line, matching lines), all 1-based.
-    let mut groups: Vec<(usize, usize, Vec<usize>)> = Vec::new();
+    let mut groups: Vec<Group> = Vec::new();
     for n in (start..=end).filter(|n| re.is_match(lines[n - 1])) {
         let lo = n.saturating_sub(opts.context).max(1);
-        let hi = (n + opts.context).min(total_lines);
+        let hi = n.saturating_add(opts.context).min(total_lines);
         match groups.last_mut() {
-            Some(g) if lo <= g.1 + 1 => {
-                g.1 = hi;
-                g.2.push(n);
+            Some(g) if lo <= g.hi + 1 => {
+                g.hi = hi;
+                g.matches.push(n);
             }
-            _ => groups.push((lo, hi, vec![n])),
+            _ => groups.push(Group { lo, hi, matches: vec![n] }),
         }
     }
 
     // The budget is checked line by line. The page always reaches its first match, so paging always advances; a
-    // cut before a group's first match resumes at that match, otherwise at the first line not emitted.
+    // cut before a group's first match resumes at that match, otherwise at the first line not emitted. Trailing
+    // context may run past the window, but paging resumes inside it so no line goes unscanned.
     let mut match_count = 0;
-    'groups: for (i, (lo, hi, matches)) in groups.iter().enumerate() {
-        let first_match = matches[0];
-        for n in *lo..=*hi {
-            let sep = if i > 0 && n == *lo { "--\n" } else { "" };
+    'groups: for (i, g) in groups.iter().enumerate() {
+        let first_match = g.matches[0];
+        for n in g.lo..=g.hi {
+            let sep = if i > 0 && n == g.lo { "--\n" } else { "" };
             let l = line(n);
             let must_emit = i == 0 && n <= first_match;
             if !must_emit && text.len() + sep.len() + l.len() > opts.budget {
-                next_offset = Some(n.max(first_match));
-                match_count += matches.iter().filter(|m| **m < n).count();
+                next_offset = Some(n.max(first_match).min(end + 1));
+                match_count += g.matches.iter().filter(|m| **m < n).count();
                 break 'groups;
             }
             text.push_str(sep);
             text.push_str(&l);
         }
-        match_count += matches.len();
+        match_count += g.matches.len();
     }
     if next_offset.is_none() && end < total_lines && start <= total_lines {
         next_offset = Some(end + 1);
@@ -324,6 +331,45 @@ mod tests {
         let r = render("a\nb\n", &opts(usize::MAX, Some(1000)));
         assert_eq!(r.text, "");
         assert_eq!(r.next_offset, None);
+        Ok(())
+    }
+
+    #[test]
+    fn test_budget_cut_past_window_does_not_skip_matches() -> Result<(), anyhow::Error> {
+        let content = numbered(30);
+        let re = Regex::new(r"^line (5|7)$")?;
+        let mut offset = 1;
+        let mut total_matches = 0;
+        loop {
+            let o = RenderOptions {
+                offset,
+                limit: Some(5),
+                pattern: Some(&re),
+                context: 3,
+                budget: 55,
+            };
+            let r = render(&content, &o);
+            total_matches += r.match_count.unwrap_or_default();
+            match r.next_offset {
+                Some(n) => {
+                    assert!(n > offset);
+                    offset = n;
+                }
+                None => break,
+            }
+        }
+        assert_eq!(total_matches, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_huge_context_does_not_overflow() -> Result<(), anyhow::Error> {
+        let re = Regex::new("b")?;
+        let mut o = opts(1, None);
+        o.pattern = Some(&re);
+        o.context = usize::MAX;
+        let r = render("a\nb\nc\n", &o);
+        assert_eq!(r.text, "1\ta\n2\tb\n3\tc\n");
         Ok(())
     }
 }

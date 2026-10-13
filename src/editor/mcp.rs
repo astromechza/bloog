@@ -1,6 +1,7 @@
 mod render;
 
 use crate::store::{Post, Store};
+use regex::RegexBuilder;
 use render::{OUTPUT_BUDGET, RenderOptions, render};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -16,6 +17,8 @@ const DEFAULT_LIMIT: usize = 400;
 const MAX_LIMIT: usize = 1000;
 const DEFAULT_CONTEXT: usize = 2;
 const MAX_CONTEXT: usize = 10;
+/// Compiled size limit for agent supplied patterns; far above any sensible grep, well below the regex default.
+const MAX_PATTERN_SIZE: usize = 1 << 20;
 
 const INSTRUCTIONS: &str = "Read-only access to the author's blog posts in the bloog editor. \
 You cannot change anything: propose edits for the author to apply by hand in the editor. \
@@ -78,7 +81,12 @@ impl EditorMcp {
 
     #[instrument(name = "mcp.get_post", skip_all, fields(slug = %req.slug, pattern = ?req.pattern))]
     async fn get_post_inner(&self, req: GetPostRequest) -> Result<CallToolResult, ErrorData> {
-        let pattern = match req.pattern.as_deref().map(regex::Regex::new).transpose() {
+        let pattern = match req
+            .pattern
+            .as_deref()
+            .map(|p| RegexBuilder::new(p).size_limit(MAX_PATTERN_SIZE).build())
+            .transpose()
+        {
             Ok(p) => p,
             Err(e) => return Ok(tool_error(format!("invalid pattern: {e}"))),
         };
@@ -261,6 +269,17 @@ mod tests {
         let mcp = seeded().await?;
         let mut q = req("newer-post");
         q.pattern = Some("(".to_string());
+        let r = mcp.get_post_inner(q).await?;
+        assert_eq!(r.is_error, Some(true));
+        assert!(text(&r).contains("invalid pattern"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_post_oversized_regex_is_tool_error() -> Result<(), anyhow::Error> {
+        let mcp = seeded().await?;
+        let mut q = req("newer-post");
+        q.pattern = Some(r"\w{80}".to_string());
         let r = mcp.get_post_inner(q).await?;
         assert_eq!(r.is_error, Some(true));
         assert!(text(&r).contains("invalid pattern"));
