@@ -51,6 +51,7 @@ pub(crate) const COMMON_CSS: &str = r###"
 --tx-muted: #6F6E69;
 --link: #205EA6;
 --border: #DAD8CE;
+--border-input: #878580;
 --code-tx: #AF3029;
 --code-bg: #F2F0E5;
 --code-block-bg: #282C34;
@@ -137,7 +138,7 @@ pre > code {
 
 blockquote { border-left-color: var(--border); color: var(--tx-muted); }
 td, th { border-bottom-color: var(--border); }
-input[type="text"], input[type="date"], input[type="file"], textarea, select { border-color: var(--border); }
+input[type="text"], input[type="date"], input[type="file"], textarea, select { border-color: var(--border-input); }
 input:focus, textarea:focus, select:focus { border-color: var(--link) !important; }
 .button, button, input[type="submit"], input[type="button"] {
   background-color: var(--link);
