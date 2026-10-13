@@ -7,8 +7,6 @@ use chrono::{Datelike, Local};
 use clap::crate_version;
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use std::ops::Deref;
-use std::sync::LazyLock;
 
 const RFC3339_DATE_FORMAT: &str = "%Y-%m-%dT00:00:00Z";
 
@@ -79,7 +77,8 @@ fn render_body_html(title: &str, body: Markup) -> Markup {
     }
 }
 
-static FOOTER: LazyLock<Markup> = LazyLock::new(|| {
+/// Rendered per request so the copyright year stays current in long running processes.
+fn footer() -> Markup {
     html! {
         footer.container {
             small {
@@ -88,7 +87,7 @@ static FOOTER: LazyLock<Markup> = LazyLock::new(|| {
             }
         }
     }
-});
+}
 
 pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<Box<HtmxContext>>) -> impl IntoResponse {
     render_body_html_or_htmx(
@@ -124,7 +123,7 @@ pub(crate) fn internal_error_page(err: anyhow::Error, htmx_context: Option<Box<H
                     }
                 }
             }
-            (FOOTER.deref())
+            (footer())
         },
         render_body_html,
         htmx_context,
@@ -155,7 +154,7 @@ pub(crate) fn not_found_page(uri: Uri, htmx_context: Option<Box<HtmxContext>>) -
                     }
                 }
             }
-            (FOOTER.deref())
+            (footer())
         },
         render_body_html,
         htmx_context,
@@ -243,7 +242,7 @@ pub(crate) fn get_index_page(
                     }
                 }
             }
-            (FOOTER.deref())
+            (footer())
         },
         render_body_html,
         htmx_context,
@@ -284,7 +283,7 @@ pub(crate) fn get_post_page(post: Post, content_html: Markup, toc: Markup, htmx_
                     }
                 }
             }
-            (FOOTER.deref())
+            (footer())
         },
         render_body_html,
         htmx_context,
