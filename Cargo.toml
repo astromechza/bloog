@@ -25,13 +25,13 @@ xmlparser = { version = "0.13.6" }
 log = { version = "0.4.34" }
 rust-embed = { version = "8.13.0", features = ["mime-guess"] }
 # Provides the API component of OTEL
-opentelemetry = { version = "0.28.0", default-features = false, features = ["trace"] }
+opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"] }
 # Provides the SDK implementations of the OTEL API
-opentelemetry_sdk = { version = "0.28.0", default-features = false, features = ["trace", "logs"] }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace", "logs"] }
 # Provides the tracing layer for OTEL
-tracing-opentelemetry = { version = "0.29.0", default-features = false}
+tracing-opentelemetry = { version = "0.34.0", default-features = false}
 # Provides the network transport for OTEL
-opentelemetry-otlp = { version = "0.28.0", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client", "reqwest-rustls"] }
 # Provides the Rust APIs and macros for tracing
 tracing = { version = "0.1.44" }
 # Provides the Rust apis for a global subscriber listing for spans.
