@@ -52,7 +52,7 @@ pub async fn run(cfg: Config, store: Store) -> Result<(), anyhow::Error> {
                 .on_failure(customhttptrace::HttpTraceLayerHooks),
         );
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", cfg.port)).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app).with_graceful_shutdown(crate::shutdown_signal()).await?;
     Ok(())
 }
 

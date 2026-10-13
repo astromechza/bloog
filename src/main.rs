@@ -115,13 +115,43 @@ async fn main_err() -> Result<(), anyhow::Error> {
     let store = store::Store::from_url(&args.store_url)?;
 
     info!("Starting {:?}..", args.command);
-    match args.command {
-        Command::Viewer => viewer::run(viewer::Config { port: args.port as u16 }, store).await?,
-        Command::Editor => editor::run(editor::Config { port: args.port as u16 }, store).await?,
-    }
+    let result = match args.command {
+        Command::Viewer => viewer::run(viewer::Config { port: args.port as u16 }, store).await,
+        Command::Editor => editor::run(editor::Config { port: args.port as u16 }, store).await,
+    };
 
+    // Flush any buffered spans before exiting, regardless of how the server stopped.
     if let Some(tracer_provider) = optional_tracer_provider {
-        spawn_blocking(move || tracer_provider.shutdown());
+        match spawn_blocking(move || tracer_provider.shutdown()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => eprintln!("failed to shutdown tracer provider: {}", e),
+            Err(e) => eprintln!("failed to join tracer provider shutdown: {}", e),
+        }
     }
-    Ok(())
+    result
+}
+
+/// Resolves when the process receives Ctrl-C or SIGTERM so that the servers can shut down gracefully.
+pub(crate) async fn shutdown_signal() {
+    let ctrl_c = async {
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    info!("Shutdown signal received..");
 }

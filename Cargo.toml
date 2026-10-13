@@ -13,7 +13,7 @@ image = { version = "0.25.10", features = ["jpeg", "png", "webp"] }
 itertools = { version = "0.15.0" }
 maud = { version = "0.27.0", features = ["axum"] }
 object_store = { version = "0.14.2", features = ["http", "aws"] }
-tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "signal"] }
 url = { version = "2.5.8" }
 serde = { version = "1.0.229", features = ["derive"] }
 anyhow = { version = "1.0.104" }
